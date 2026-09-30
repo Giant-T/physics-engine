@@ -1,4 +1,4 @@
-use super::vertex::Vertex;
+use super::{texture::Texture, vertex::Vertex};
 
 pub struct BasicRenderPipeline {
     pipeline: wgpu::RenderPipeline,
@@ -44,7 +44,13 @@ impl BasicRenderPipeline {
                 unclipped_depth: false,
                 conservative: false,
             },
-            depth_stencil: None,
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: Texture::DEPTH_FORMAT,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(wgpu::CompareFunction::Less),
+                stencil: Default::default(),
+                bias: Default::default(),
+            }),
             multisample: wgpu::MultisampleState {
                 count: 1,
                 mask: !0,

@@ -12,3 +12,4 @@ wgpu = "30.0"
 pollster = "0.3"
 cgmath = "0.18"
 bytemuck = { version = "1.24", features = [ "derive" ] }
+tobj = "4.0.5"

@@ -61,6 +61,7 @@ pub struct CameraController {
     is_right_pressed: bool,
 }
 
+// TODO: se rebaser sur ca https://sotrh.github.io/learn-wgpu/intermediate/tutorial12-camera/#the-projection
 impl CameraController {
     pub fn new(speed: f32) -> Self {
         Self {

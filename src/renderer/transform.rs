@@ -5,7 +5,7 @@ pub struct Transform {
 }
 
 impl Transform {
-    pub fn from_identity() -> Self {
+    pub fn identity() -> Self {
         Self {
             matrix: Matrix4::identity(),
         }

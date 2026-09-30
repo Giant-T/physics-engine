@@ -6,6 +6,7 @@ pub struct RenderObject {
     transform: Transform,
     mesh: Mesh,
 }
+
 impl RenderObject {
     pub fn new(transform: Transform, mesh: Mesh) -> Self {
         Self { transform, mesh }

@@ -20,7 +20,7 @@ pub struct State {
 impl State {
     pub async fn new(window: Arc<Window>) -> anyhow::Result<Self> {
         let renderer = Renderer::new(window.clone()).await?;
-        let camera_controller = CameraController::new(0.005);
+        let camera_controller = CameraController::new(2.0);
 
         Ok(Self {
             window,
@@ -45,6 +45,7 @@ impl State {
     fn update(&mut self) {
         let now = Instant::now();
         let delta_time = now - self.last_frame_time;
+        self.last_frame_time = now;
 
         self.camera_controller
             .update_camera(&mut self.renderer.camera, delta_time);

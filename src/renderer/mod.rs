@@ -5,20 +5,20 @@ use winit::window::Window;
 
 use camera::{Camera, CameraUniform};
 use pipeline::BasicRenderPipeline;
-use vertex::{INDICES, VERTICES};
 
 mod camera;
 mod mesh;
 mod object;
 mod pipeline;
+mod texture;
 mod transform;
 mod vertex;
+use mesh::Mesh;
+use texture::Texture;
 
 pub use camera::CameraController;
 pub use object::RenderObject;
 pub use transform::Transform;
-
-use crate::renderer::mesh::Mesh;
 
 pub struct Renderer {
     is_surface_configured: bool,
@@ -27,6 +27,8 @@ pub struct Renderer {
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     render_objects: Vec<RenderObject>,
+
+    depth_texture: Texture,
 
     pub camera: Camera,
     camera_uniform: CameraUniform,
@@ -129,16 +131,24 @@ impl Renderer {
             label: Some("camera_bind_group"),
         });
 
+        let depth_texture = Texture::create_depth_texture(&device, &config);
+
         let render_pipeline = Rc::new(BasicRenderPipeline::new(
             &device,
             &config,
             &[Some(&camera_bind_group_layout)],
         ));
 
-        let render_objects = vec![RenderObject::new(
-            Transform::from_identity(),
-            Mesh::new(&device, VERTICES, INDICES, render_pipeline.clone()),
-        )];
+        let render_objects = vec![
+            RenderObject::new(
+                Transform::identity(),
+                Mesh::load_model("stanford-bunny.obj", &device, render_pipeline.clone()),
+            ),
+            RenderObject::new(
+                Transform::identity(),
+                Mesh::load_model("suzanne.obj", &device, render_pipeline),
+            ),
+        ];
 
         Ok(Self {
             is_surface_configured: false,
@@ -147,6 +157,8 @@ impl Renderer {
             queue,
             config,
             render_objects,
+
+            depth_texture,
 
             camera,
             camera_uniform,
@@ -167,6 +179,8 @@ impl Renderer {
         self.is_surface_configured = true;
 
         self.camera.set_aspect(width as f32 / height as f32);
+
+        self.depth_texture = Texture::create_depth_texture(&self.device, &self.config);
     }
 
     pub fn render(&mut self) -> anyhow::Result<()> {
@@ -217,7 +231,14 @@ impl Renderer {
                         store: wgpu::StoreOp::Store,
                     },
                 })],
-                depth_stencil_attachment: None,
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.depth_texture.view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
                 occlusion_query_set: None,
                 timestamp_writes: None,
                 multiview_mask: None,
