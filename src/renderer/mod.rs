@@ -1,18 +1,21 @@
-use std::{rc::Rc, sync::Arc};
+use std::sync::Arc;
 
+use cgmath::Vector3;
 use wgpu::util::DeviceExt;
 use winit::window::Window;
 
 use camera::{Camera, CameraUniform};
-use pipeline::BasicRenderPipeline;
 
 mod camera;
+mod light;
 mod mesh;
 mod object;
 mod pipeline;
 mod texture;
 mod transform;
 mod vertex;
+
+use light::PointLight;
 use mesh::Mesh;
 use texture::Texture;
 
@@ -20,13 +23,23 @@ pub use camera::CameraController;
 pub use object::RenderObject;
 pub use transform::Transform;
 
+#[rustfmt::skip]
+pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::from_cols(
+    cgmath::Vector4::new(1.0, 0.0, 0.0, 0.0),
+    cgmath::Vector4::new(0.0, 1.0, 0.0, 0.0),
+    cgmath::Vector4::new(0.0, 0.0, 0.5, 0.0),
+    cgmath::Vector4::new(0.0, 0.0, 0.5, 1.0),
+);
+
 pub struct Renderer {
     is_surface_configured: bool,
     surface: wgpu::Surface<'static>,
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
+
     render_objects: Vec<RenderObject>,
+    light: PointLight,
 
     depth_texture: Texture,
 
@@ -133,22 +146,24 @@ impl Renderer {
 
         let depth_texture = Texture::create_depth_texture(&device, &config);
 
-        let render_pipeline = Rc::new(BasicRenderPipeline::new(
-            &device,
-            &config,
-            &[Some(&camera_bind_group_layout)],
-        ));
-
         let render_objects = vec![
             RenderObject::new(
-                Transform::identity(),
-                Mesh::load_model("stanford-bunny.obj", &device, render_pipeline.clone()),
+                &device,
+                &config,
+                &camera_bind_group_layout,
+                Transform::from_rotation(Vector3::unit_y(), 90.0),
+                Mesh::load_model("stanford-bunny.obj", &device),
             ),
             RenderObject::new(
-                Transform::identity(),
-                Mesh::load_model("suzanne.obj", &device, render_pipeline),
+                &device,
+                &config,
+                &camera_bind_group_layout,
+                Transform::from_scale(0.1),
+                Mesh::load_model("suzanne.obj", &device),
             ),
         ];
+
+        let light = PointLight::new(Vector3::new(0.0, 0.0, 0.0), Transform::identity());
 
         Ok(Self {
             is_surface_configured: false,
@@ -156,7 +171,9 @@ impl Renderer {
             device,
             queue,
             config,
+
             render_objects,
+            light,
 
             depth_texture,
 
@@ -169,7 +186,6 @@ impl Renderer {
 
     pub fn resize(&mut self, width: u32, height: u32) {
         if width == 0 || height == 0 {
-            // On peut pas avoir une surface nulle
             return;
         }
 
@@ -184,7 +200,6 @@ impl Renderer {
     }
 
     pub fn render(&mut self) -> anyhow::Result<()> {
-        // On peut pas faire le rendu
         if !self.is_surface_configured {
             return Ok(());
         }
