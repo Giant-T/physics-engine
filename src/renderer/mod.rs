@@ -1,10 +1,9 @@
 use std::sync::Arc;
 
-use cgmath::Vector3;
-use wgpu::util::DeviceExt;
+use cgmath::{Point3, Quaternion, Rotation3, Vector3, num_traits::One};
 use winit::window::Window;
 
-use camera::{Camera, CameraUniform};
+use camera::Camera;
 
 mod camera;
 mod light;
@@ -38,15 +37,12 @@ pub struct Renderer {
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
 
-    render_objects: Vec<RenderObject>,
+    render_objects: Box<[RenderObject]>,
     light: PointLight,
 
     depth_texture: Texture,
 
     pub camera: Camera,
-    camera_uniform: CameraUniform,
-    camera_buffer: wgpu::Buffer,
-    camera_bind_group: wgpu::BindGroup,
 }
 
 impl Renderer {
@@ -105,65 +101,42 @@ impl Renderer {
         };
 
         let camera = Camera::new(
-            (0.0, 1.0, 2.0).into(),
-            (0.0, 0.0, 0.0).into(),
+            &device,
+            Transform::from_position_and_rotation(Point3::new(0.0, 0.0, 5.0), Quaternion::one()),
             config.width as f32 / config.height as f32,
             45.0,
             0.1,
             100.0,
         );
 
-        let mut camera_uniform = CameraUniform::new();
-        camera_uniform.update_view_proj(&camera);
-        let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Camera Buffer"),
-            contents: bytemuck::cast_slice(&[camera_uniform]),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
-
-        let camera_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                }],
-                label: Some("camera_bind_group_layout"),
-            });
-        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &camera_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: camera_buffer.as_entire_binding(),
-            }],
-            label: Some("camera_bind_group"),
-        });
-
         let depth_texture = Texture::create_depth_texture(&device, &config);
+        let light = PointLight::new(
+            &device,
+            Transform::from_translation(Vector3::new(0.0, 30.0, 0.0)),
+        );
 
-        let render_objects = vec![
+        let render_objects = Box::new([
             RenderObject::new(
                 &device,
                 &config,
-                &camera_bind_group_layout,
-                Transform::from_rotation(Vector3::unit_y(), 90.0),
+                &[
+                    Some(camera.bind_group_layout()),
+                    Some(light.bind_group_layout()),
+                ],
+                Transform::from_rotation(Quaternion::from_angle_y(cgmath::Deg(90.0))),
                 Mesh::load_model("stanford-bunny.obj", &device),
             ),
             RenderObject::new(
                 &device,
                 &config,
-                &camera_bind_group_layout,
+                &[
+                    Some(camera.bind_group_layout()),
+                    Some(light.bind_group_layout()),
+                ],
                 Transform::from_scale(0.1),
                 Mesh::load_model("suzanne.obj", &device),
             ),
-        ];
-
-        let light = PointLight::new(Vector3::new(0.0, 0.0, 0.0), Transform::identity());
+        ]);
 
         Ok(Self {
             is_surface_configured: false,
@@ -178,9 +151,6 @@ impl Renderer {
             depth_texture,
 
             camera,
-            camera_uniform,
-            camera_buffer,
-            camera_bind_group,
         })
     }
 
@@ -212,13 +182,9 @@ impl Renderer {
             | wgpu::CurrentSurfaceTexture::Validation => {
                 return Ok(());
             }
-            wgpu::CurrentSurfaceTexture::Outdated => {
+            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
                 self.surface.configure(&self.device, &self.config);
                 return Ok(());
-            }
-            wgpu::CurrentSurfaceTexture::Lost => {
-                // On pourrait recreer les ressources a la place
-                anyhow::bail!("Lost device");
             }
         };
 
@@ -271,11 +237,6 @@ impl Renderer {
     }
 
     pub fn update(&mut self) {
-        self.camera_uniform.update_view_proj(&self.camera);
-        self.queue.write_buffer(
-            &self.camera_buffer,
-            0,
-            bytemuck::cast_slice(&[self.camera_uniform]),
-        );
+        self.camera.update_uniforms(&self.queue);
     }
 }

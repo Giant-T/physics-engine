@@ -1,49 +1,143 @@
 use std::time::Duration;
 
-use cgmath::SquareMatrix;
+use cgmath::{InnerSpace, Matrix4, SquareMatrix, Vector3, num_traits::Zero};
+use wgpu::util::DeviceExt;
 use winit::keyboard::KeyCode;
 
-use super::OPENGL_TO_WGPU_MATRIX;
+use super::{OPENGL_TO_WGPU_MATRIX, Transform};
 
 pub struct Camera {
-    eye: cgmath::Point3<f32>,
-    target: cgmath::Point3<f32>,
-    up: cgmath::Vector3<f32>,
+    transform: Transform,
+
     aspect: f32,
     fovy: f32,
     znear: f32,
     zfar: f32,
+
+    view_proj_buffer: wgpu::Buffer,
+    position_buffer: wgpu::Buffer,
+    bind_group_layout: wgpu::BindGroupLayout,
+    bind_group: wgpu::BindGroup,
 }
 
 impl Camera {
     pub fn new(
-        eye: cgmath::Point3<f32>,
-        target: cgmath::Point3<f32>,
+        device: &wgpu::Device,
+        transform: Transform,
         aspect: f32,
         fovy: f32,
         znear: f32,
         zfar: f32,
     ) -> Self {
+        let matrix: [[f32; 4]; 4] = (OPENGL_TO_WGPU_MATRIX
+            * Self::proj_matrix(aspect, fovy, znear, zfar)
+            * transform.matrix().invert().unwrap())
+        .into();
+        let view_proj_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("View Proj Buffer"),
+            contents: bytemuck::cast_slice(&[matrix]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let position: [f32; 3] = transform.position().into();
+        let position_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Camera Position Buffer"),
+            contents: bytemuck::cast_slice(&[position]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+            label: Some("camera_bind_group_layout"),
+        });
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: view_proj_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: position_buffer.as_entire_binding(),
+                },
+            ],
+            label: Some("camera_bind_group"),
+        });
+
         Self {
-            eye,
-            target,
-            up: cgmath::Vector3::unit_y(),
+            transform,
+
             aspect,
             fovy,
             znear,
             zfar,
+
+            view_proj_buffer,
+            position_buffer,
+            bind_group_layout,
+            bind_group,
         }
     }
 
-    fn build_view_proj_mat(&self) -> cgmath::Matrix4<f32> {
-        let view = cgmath::Matrix4::look_at_rh(self.eye, self.target, self.up);
-        let proj = cgmath::perspective(cgmath::Deg(self.fovy), self.aspect, self.znear, self.zfar);
+    fn proj_matrix(aspect: f32, fovy: f32, znear: f32, zfar: f32) -> Matrix4<f32> {
+        cgmath::perspective(cgmath::Deg(fovy), aspect, znear, zfar)
+    }
 
-        return OPENGL_TO_WGPU_MATRIX * proj * view;
+    fn build_matrix(&self) -> Matrix4<f32> {
+        let view = self.transform.matrix().invert().unwrap();
+
+        OPENGL_TO_WGPU_MATRIX
+            * Self::proj_matrix(self.aspect, self.fovy, self.znear, self.zfar)
+            * view
     }
 
     pub fn set_aspect(&mut self, aspect: f32) {
         self.aspect = aspect;
+    }
+
+    pub fn update_uniforms(&self, queue: &wgpu::Queue) {
+        let matrix: [[f32; 4]; 4] = self.build_matrix().into();
+        queue.write_buffer(&self.view_proj_buffer, 0, bytemuck::cast_slice(&[matrix]));
+        let position: [f32; 3] = self.transform.position().into();
+        queue.write_buffer(&self.position_buffer, 0, bytemuck::cast_slice(&[position]));
+    }
+
+    pub fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
+        &self.bind_group_layout
+    }
+
+    pub fn bind_group(&self) -> &wgpu::BindGroup {
+        &self.bind_group
+    }
+
+    pub fn transform(&self) -> &Transform {
+        &self.transform
+    }
+
+    pub fn transform_mut(&mut self) -> &mut Transform {
+        &mut self.transform
     }
 }
 
@@ -55,7 +149,6 @@ pub struct CameraController {
     is_right_pressed: bool,
 }
 
-// TODO: se rebaser sur ca https://sotrh.github.io/learn-wgpu/intermediate/tutorial12-camera/#the-projection
 impl CameraController {
     pub fn new(speed: f32) -> Self {
         Self {
@@ -90,56 +183,33 @@ impl CameraController {
     }
 
     pub fn update_camera(&self, camera: &mut Camera, delta_time: Duration) {
-        use cgmath::InnerSpace;
         let delta_time = delta_time.as_secs_f32();
+        let transform = camera.transform_mut();
 
-        let forward = camera.target - camera.eye;
-        let forward_norm = forward.normalize();
-        let forward_mag = forward.magnitude();
+        let forward = transform.forward();
+        // let up = transform.up();
+        let right = transform.right();
 
-        // Prevents glitching when the camera gets too close to the
-        // center of the scene.
-        if self.is_forward_pressed && forward_mag > self.speed {
-            camera.eye += forward_norm * self.speed * delta_time;
+        let mut translation = Vector3::<f32>::zero();
+
+        // Avancer/Reculer
+        if self.is_forward_pressed {
+            translation += forward;
         }
         if self.is_backward_pressed {
-            camera.eye -= forward_norm * self.speed * delta_time;
+            translation -= forward;
         }
 
-        let right = forward_norm.cross(camera.up);
-
-        // Redo radius calc in case the forward/backward is pressed.
-        let forward = camera.target - camera.eye;
-        let forward_mag = forward.magnitude();
-
+        // Bouger horizontalement
         if self.is_right_pressed {
-            // Rescale the distance between the target and the eye so
-            // that it doesn't change. The eye, therefore, still
-            // lies on the circle made by the target and eye.
-            camera.eye = camera.target
-                - (forward + right * self.speed * delta_time).normalize() * forward_mag;
+            translation += right;
         }
         if self.is_left_pressed {
-            camera.eye = camera.target
-                - (forward - right * self.speed * delta_time).normalize() * forward_mag;
+            translation -= right;
         }
-    }
-}
 
-#[repr(C)]
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct CameraUniform {
-    view_proj: [[f32; 4]; 4], // mat4x4<f32>
-}
-
-impl CameraUniform {
-    pub fn new() -> Self {
-        Self {
-            view_proj: cgmath::Matrix4::identity().into(),
+        if translation.magnitude2() > 0.0 {
+            transform.translate(translation.normalize() * self.speed * delta_time);
         }
-    }
-
-    pub fn update_view_proj(&mut self, camera: &Camera) {
-        self.view_proj = camera.build_view_proj_mat().into();
     }
 }

@@ -20,7 +20,7 @@ pub struct State {
 impl State {
     pub async fn new(window: Arc<Window>) -> anyhow::Result<Self> {
         let renderer = Renderer::new(window.clone()).await?;
-        let camera_controller = CameraController::new(2.0);
+        let camera_controller = CameraController::new(10.0);
 
         Ok(Self {
             window,

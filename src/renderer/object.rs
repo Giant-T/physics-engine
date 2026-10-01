@@ -15,13 +15,13 @@ impl RenderObject {
     pub fn new(
         device: &wgpu::Device,
         config: &wgpu::SurfaceConfiguration,
-        camera_bind_group_layout: &wgpu::BindGroupLayout,
+        bind_group_layouts: &[Option<&wgpu::BindGroupLayout>],
         transform: Transform,
         mesh: Mesh,
     ) -> Self {
         let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: None,
-            contents: bytemuck::cast_slice(&[transform.to_uniform()]),
+            contents: bytemuck::cast_slice(&[transform.to_buffer()]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
@@ -48,11 +48,9 @@ impl RenderObject {
             label: None,
         });
 
-        let render_pipeline = BasicRenderPipeline::new(
-            &device,
-            config,
-            &[Some(&camera_bind_group_layout), Some(&bind_group_layout)],
-        );
+        let mut bind_group_layouts = Vec::from(bind_group_layouts);
+        bind_group_layouts.push(Some(&bind_group_layout));
+        let render_pipeline = BasicRenderPipeline::new(&device, config, &bind_group_layouts);
 
         Self {
             transform,
@@ -70,8 +68,9 @@ impl RenderObject {
 
     pub fn render(&self, renderer: &Renderer, render_pass: &mut wgpu::RenderPass) {
         render_pass.set_pipeline(self.render_pipeline.pipeline());
-        render_pass.set_bind_group(0, &renderer.camera_bind_group, &[]);
-        render_pass.set_bind_group(1, &self.bind_group, &[]);
+        render_pass.set_bind_group(0, renderer.camera.bind_group(), &[]);
+        render_pass.set_bind_group(1, renderer.light.bind_group(), &[]);
+        render_pass.set_bind_group(2, &self.bind_group, &[]);
         render_pass.set_vertex_buffer(0, self.mesh.vertex_buffer.slice(..));
         render_pass.set_index_buffer(self.mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
         render_pass.draw_indexed(0..self.mesh.num_indices, 0, 0..1);
