@@ -15,12 +15,14 @@ use super::{
 };
 
 pub struct State {
-    renderer: Renderer,
-    camera_controller: CameraController,
     window: Arc<Window>,
-    last_frame_time: Instant,
-    cursor_locked: bool,
+    renderer: Renderer,
     input_state: InputState,
+
+    camera_controller: CameraController,
+
+    cursor_locked: bool,
+    last_frame_time: Instant,
 }
 
 impl State {
@@ -31,10 +33,12 @@ impl State {
         Ok(Self {
             window,
             renderer,
+            input_state: Default::default(),
+
             camera_controller,
+
             last_frame_time: Instant::now(),
             cursor_locked: false,
-            input_state: Default::default(),
         })
     }
 
@@ -95,7 +99,7 @@ impl State {
 
         self.input_state.reset_mouse_delta();
 
-        self.renderer.render()
+        self.renderer.render(&self.window)
     }
 
     fn handle_mouse_move(&mut self, mouse_delta: (f64, f64)) {
@@ -137,6 +141,8 @@ impl ApplicationHandler<State> for App {
             Some(state) => state,
             _ => return,
         };
+
+        state.renderer.ui_window_event(&state.window, &event);
 
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),

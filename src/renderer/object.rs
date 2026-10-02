@@ -3,6 +3,7 @@ use wgpu::util::DeviceExt;
 use super::{Renderer, mesh::Mesh, pipeline::BasicRenderPipeline, transform::Transform};
 
 pub struct RenderObject {
+    name: &'static str,
     transform: Transform,
     mesh: Mesh,
     render_pipeline: BasicRenderPipeline,
@@ -15,6 +16,7 @@ impl RenderObject {
     pub fn new(
         device: &wgpu::Device,
         config: &wgpu::SurfaceConfiguration,
+        name: &'static str,
         bind_group_layouts: &[Option<&wgpu::BindGroupLayout>],
         transform: Transform,
         mesh: Mesh,
@@ -53,6 +55,7 @@ impl RenderObject {
         let render_pipeline = BasicRenderPipeline::new(&device, config, &bind_group_layouts);
 
         Self {
+            name,
             transform,
             mesh,
             render_pipeline,
@@ -74,5 +77,19 @@ impl RenderObject {
         render_pass.set_vertex_buffer(0, self.mesh.vertex_buffer.slice(..));
         render_pass.set_index_buffer(self.mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
         render_pass.draw_indexed(0..self.mesh.num_indices, 0, 0..1);
+    }
+
+    pub fn update_uniforms(&self, queue: &wgpu::Queue) {
+        queue.write_buffer(
+            &self.buffer,
+            0,
+            bytemuck::cast_slice(&[self.transform.to_buffer()]),
+        );
+    }
+
+    pub fn ui(&mut self, ui: &mut egui::Ui) {
+        ui.collapsing(self.name, |ui| {
+            self.transform.ui(ui);
+        });
     }
 }

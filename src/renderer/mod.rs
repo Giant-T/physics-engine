@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use cgmath::{Point3, Quaternion, Rotation3, Vector3};
-use winit::window::Window;
+use egui_wgpu::ScreenDescriptor;
+use winit::{event::WindowEvent, window::Window};
 
 use camera::Camera;
 
@@ -36,6 +37,11 @@ pub struct Renderer {
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
+    pixels_per_point: f32,
+
+    ui_renderer: egui_wgpu::Renderer,
+    ui_ctx: egui::Context,
+    ui_state: egui_winit::State,
 
     render_objects: Box<[RenderObject]>,
     light: PointLight,
@@ -121,6 +127,7 @@ impl Renderer {
             RenderObject::new(
                 &device,
                 &config,
+                "Stanford Bunny",
                 &[
                     Some(camera.bind_group_layout()),
                     Some(light.bind_group_layout()),
@@ -131,6 +138,7 @@ impl Renderer {
             RenderObject::new(
                 &device,
                 &config,
+                "Suzanne",
                 &[
                     Some(camera.bind_group_layout()),
                     Some(light.bind_group_layout()),
@@ -140,12 +148,37 @@ impl Renderer {
             ),
         ]);
 
+        let ui_renderer = egui_wgpu::Renderer::new(
+            &device,
+            surface_format,
+            egui_wgpu::RendererOptions {
+                msaa_samples: 1,
+                depth_stencil_format: None,
+                dithering: true,
+                predictable_texture_filtering: false,
+            },
+        );
+        let ui_ctx = egui::Context::default();
+        let ui_state = egui_winit::State::new(
+            ui_ctx.clone(),
+            egui::ViewportId::ROOT,
+            &window,
+            None,
+            None,
+            None,
+        );
+
         Ok(Self {
             is_surface_configured: false,
             surface,
             device,
             queue,
             config,
+            pixels_per_point: window.scale_factor() as f32,
+
+            ui_renderer,
+            ui_ctx,
+            ui_state,
 
             render_objects,
             light,
@@ -171,7 +204,7 @@ impl Renderer {
         self.depth_texture = Texture::create_depth_texture(&self.device, &self.config);
     }
 
-    pub fn render(&mut self) -> anyhow::Result<()> {
+    pub fn render(&mut self, window: &Window) -> anyhow::Result<()> {
         if !self.is_surface_configured {
             return Ok(());
         }
@@ -197,40 +230,8 @@ impl Renderer {
                 label: Some("Render Encoder"),
             });
 
-        {
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Render Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    depth_slice: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.0,
-                            g: 0.0,
-                            b: 0.0,
-                            a: 1.0,
-                        }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.depth_texture.view,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
-                        store: wgpu::StoreOp::Store,
-                    }),
-                    stencil_ops: None,
-                }),
-                occlusion_query_set: None,
-                timestamp_writes: None,
-                multiview_mask: None,
-            });
-
-            for obj in &self.render_objects {
-                obj.render(self, &mut render_pass);
-            }
-        }
+        self.render_scene(&view, &mut encoder);
+        self.render_ui(&view, &mut encoder, window);
 
         self.queue.submit(std::iter::once(encoder.finish()));
         self.queue.present(output);
@@ -238,7 +239,119 @@ impl Renderer {
         Ok(())
     }
 
+    fn render_scene(&mut self, view: &wgpu::TextureView, encoder: &mut wgpu::CommandEncoder) {
+        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("Render Pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &view,
+                resolve_target: None,
+                depth_slice: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color {
+                        r: 0.0,
+                        g: 0.0,
+                        b: 0.0,
+                        a: 1.0,
+                    }),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: &self.depth_texture.view,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(1.0),
+                    store: wgpu::StoreOp::Store,
+                }),
+                stencil_ops: None,
+            }),
+            occlusion_query_set: None,
+            timestamp_writes: None,
+            multiview_mask: None,
+        });
+
+        for obj in &self.render_objects {
+            obj.render(self, &mut render_pass);
+        }
+    }
+
+    fn render_ui(
+        &mut self,
+        view: &wgpu::TextureView,
+        encoder: &mut wgpu::CommandEncoder,
+        window: &Window,
+    ) {
+        let input = self.ui_state.take_egui_input(window);
+        let mut full_output = self.ui_ctx.run_ui(input, |ui| {
+            egui::Window::new("Objets").show(ui, |ui| {
+                for obj in &mut self.render_objects {
+                    obj.ui(ui);
+                }
+            });
+        });
+
+        let clipped_primitives = self
+            .ui_ctx
+            .tessellate(full_output.shapes, self.pixels_per_point);
+
+        for (id, image_deltas) in &full_output.textures_delta.set {
+            for image_delta in image_deltas {
+                self.ui_renderer
+                    .update_texture(&self.device, &self.queue, *id, image_delta);
+            }
+        }
+
+        let screen_descriptor = ScreenDescriptor {
+            size_in_pixels: [self.config.width, self.config.height],
+            pixels_per_point: self.pixels_per_point,
+        };
+
+        self.ui_renderer.update_buffers(
+            &self.device,
+            &self.queue,
+            encoder,
+            &clipped_primitives,
+            &screen_descriptor,
+        );
+
+        {
+            let mut render_pass = encoder
+                .begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("UI Render Pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: view,
+                        resolve_target: None,
+                        depth_slice: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Load,
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                    occlusion_query_set: None,
+                    timestamp_writes: None,
+                    multiview_mask: None,
+                })
+                .forget_lifetime();
+
+            self.ui_renderer
+                .render(&mut render_pass, &clipped_primitives, &screen_descriptor);
+        }
+
+        for id in &full_output.textures_delta.free {
+            self.ui_renderer.free_texture(id);
+        }
+
+        full_output.textures_delta.clear();
+    }
+
+    pub fn ui_window_event(&mut self, window: &Window, event: &WindowEvent) {
+        let _ = self.ui_state.on_window_event(window, event);
+    }
+
     pub fn update(&mut self) {
         self.camera.update_uniforms(&self.queue);
+        for obj in &self.render_objects {
+            obj.update_uniforms(&self.queue);
+        }
     }
 }

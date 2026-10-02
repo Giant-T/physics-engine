@@ -110,6 +110,21 @@ impl Transform {
     pub fn update_rotation_from_pitch_yaw(&mut self, pitch: f32, yaw: f32) {
         self.rotation = Quaternion::from_angle_y(Rad(yaw)) * Quaternion::from_angle_x(Rad(pitch));
     }
+
+    pub fn ui(&mut self, ui: &mut egui::Ui) {
+        ui.columns(2, |columns| {
+            columns[0].label("Position:");
+            columns[1].columns(3, |columns| {
+                columns[0].add(egui::DragValue::new(&mut self.translation.x).speed(0.01));
+                columns[1].add(egui::DragValue::new(&mut self.translation.y).speed(0.01));
+                columns[2].add(egui::DragValue::new(&mut self.translation.z).speed(0.01));
+            });
+        });
+        ui.columns(2, |columns| {
+            columns[0].label("Scale:");
+            columns[1].add(egui::DragValue::new(&mut self.scale).speed(0.1))
+        });
+    }
 }
 
 impl Default for Transform {

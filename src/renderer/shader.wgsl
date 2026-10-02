@@ -30,7 +30,7 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     let world_position = (model * vec4<f32>(in.position, 1.0)).xyz;
     var out: VertexOutput;
 
-    out.clip_position = camera.view_proj * vec4<f32>(in.position, 1.0);
+    out.clip_position = camera.view_proj * model * vec4<f32>(in.position, 1.0);
     out.normal = normalize(in.normal);
 
     out.to_viewer = camera_position - world_position;

@@ -15,6 +15,7 @@
                 rust-analyzer
                 rustfmt
                 rustc
+                gdb
             ];
 
             buildInputs = with pkgs; [
