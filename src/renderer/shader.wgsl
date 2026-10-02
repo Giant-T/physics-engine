@@ -47,7 +47,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let normal = normalize(in.normal);
     let to_light = normalize(in.to_light);
 
-    let diffuse_intensity = max(0.0, dot(to_light, normal));
+    let diffuse_intensity = max(0.1, dot(to_light, normal));
 
     return vec4<f32>(
         diffuse_color * diffuse_intensity,
