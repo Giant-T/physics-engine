@@ -1,5 +1,6 @@
 use cgmath::{
-    Deg, EuclideanSpace, InnerSpace, Matrix4, Point3, Quaternion, Rotation3, SquareMatrix, Vector3,
+    Deg, EuclideanSpace, InnerSpace, Matrix4, Point3, Quaternion, Rad, Rotation3, SquareMatrix,
+    Vector3,
     num_traits::{One, Zero},
 };
 
@@ -40,6 +41,14 @@ impl Transform {
     pub fn from_scale(scale: f32) -> Self {
         Self {
             scale,
+            ..Default::default()
+        }
+    }
+
+    pub fn from_position_pitch_yaw(position: Point3<f32>, pitch: f32, yaw: f32) -> Self {
+        Self {
+            translation: position.to_vec(),
+            rotation: Quaternion::from_angle_y(Rad(yaw)) * Quaternion::from_angle_x(Rad(pitch)),
             ..Default::default()
         }
     }
@@ -96,6 +105,10 @@ impl Transform {
         let scale = Matrix4::from_scale(self.scale);
 
         translation * rotation * scale
+    }
+
+    pub fn update_rotation_from_pitch_yaw(&mut self, pitch: f32, yaw: f32) {
+        self.rotation = Quaternion::from_angle_y(Rad(yaw)) * Quaternion::from_angle_x(Rad(pitch));
     }
 }
 

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use cgmath::{Point3, Quaternion, Rotation3, Vector3, num_traits::One};
+use cgmath::{Point3, Quaternion, Rotation3, Vector3};
 use winit::window::Window;
 
 use camera::Camera;
@@ -102,7 +102,9 @@ impl Renderer {
 
         let camera = Camera::new(
             &device,
-            Transform::from_position_and_rotation(Point3::new(0.0, 0.0, 5.0), Quaternion::one()),
+            Point3::new(0.0, 0.0, 5.0),
+            0.0,
+            0.0,
             config.width as f32 / config.height as f32,
             45.0,
             0.1,
