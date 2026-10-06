@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use cgmath::{Point3, Quaternion, Rotation3, Vector3};
 use egui_wgpu::ScreenDescriptor;
+use nalgebra::{Point3, UnitQuaternion, Vector3};
 use winit::{event::WindowEvent, window::Window};
 
 use camera::Camera;
@@ -23,14 +23,6 @@ pub use camera::CameraController;
 pub use object::RenderObject;
 pub use transform::Transform;
 
-#[rustfmt::skip]
-pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::from_cols(
-    cgmath::Vector4::new(1.0, 0.0, 0.0, 0.0),
-    cgmath::Vector4::new(0.0, 1.0, 0.0, 0.0),
-    cgmath::Vector4::new(0.0, 0.0, 0.5, 0.0),
-    cgmath::Vector4::new(0.0, 0.0, 0.5, 1.0),
-);
-
 pub struct Renderer {
     is_surface_configured: bool,
     surface: wgpu::Surface<'static>,
@@ -48,7 +40,7 @@ pub struct Renderer {
 
     depth_texture: Texture,
 
-    pub camera: Camera,
+    camera: Camera,
 }
 
 impl Renderer {
@@ -132,7 +124,10 @@ impl Renderer {
                     Some(camera.bind_group_layout()),
                     Some(light.bind_group_layout()),
                 ],
-                Transform::from_rotation(Quaternion::from_angle_y(cgmath::Deg(90.0))),
+                Transform::from_rotation(UnitQuaternion::from_axis_angle(
+                    &Vector3::y_axis(),
+                    90.0f32.to_radians(),
+                )),
                 Mesh::load_model("stanford-bunny.obj", &device),
             ),
             RenderObject::new(
@@ -204,7 +199,7 @@ impl Renderer {
         self.depth_texture = Texture::create_depth_texture(&self.device, &self.config);
     }
 
-    pub fn render(&mut self, window: &Window) -> anyhow::Result<()> {
+    pub fn render(&mut self, window: &Window, delta_time: f32) -> anyhow::Result<()> {
         if !self.is_surface_configured {
             return Ok(());
         }
@@ -231,7 +226,7 @@ impl Renderer {
             });
 
         self.render_scene(&view, &mut encoder);
-        self.render_ui(&view, &mut encoder, window);
+        self.render_ui(&view, &mut encoder, window, delta_time);
 
         self.queue.submit(std::iter::once(encoder.finish()));
         self.queue.present(output);
@@ -279,9 +274,14 @@ impl Renderer {
         view: &wgpu::TextureView,
         encoder: &mut wgpu::CommandEncoder,
         window: &Window,
+        delta_time: f32,
     ) {
         let input = self.ui_state.take_egui_input(window);
+        let fps = 1.0 / delta_time;
         let mut full_output = self.ui_ctx.run_ui(input, |ui| {
+            ui.label(format!("{delta_time:.6} delta time"));
+            ui.label(format!("{fps:.0} fps"));
+
             egui::Window::new("Objets").show(ui, |ui| {
                 for obj in &mut self.render_objects {
                     obj.ui(ui);
@@ -353,5 +353,9 @@ impl Renderer {
         for obj in &self.render_objects {
             obj.update_uniforms(&self.queue);
         }
+    }
+
+    pub fn camera_mut(&mut self) -> &mut Camera {
+        &mut self.camera
     }
 }

@@ -1,6 +1,6 @@
 use std::{sync::Arc, time::Instant};
 
-use cgmath::Vector2;
+use nalgebra::Vector2;
 use winit::{
     application::ApplicationHandler,
     event::{DeviceEvent, KeyEvent, MouseButton, WindowEvent},
@@ -80,26 +80,22 @@ impl State {
         }
     }
 
-    fn update(&mut self) {
-        let now = Instant::now();
-        let delta_time = (now - self.last_frame_time).as_secs_f32();
-        self.last_frame_time = now;
-
+    fn update(&mut self, delta_time: f32) {
         self.camera_controller.update_camera(
             &self.input_state,
-            &mut self.renderer.camera,
+            self.renderer.camera_mut(),
             delta_time,
             self.cursor_locked,
         );
         self.renderer.update();
     }
 
-    pub fn render(&mut self) -> anyhow::Result<()> {
+    pub fn render(&mut self, delta_time: f32) -> anyhow::Result<()> {
         self.window.request_redraw();
 
         self.input_state.reset_mouse_delta();
 
-        self.renderer.render(&self.window)
+        self.renderer.render(&self.window, delta_time)
     }
 
     fn handle_mouse_move(&mut self, mouse_delta: (f64, f64)) {
@@ -148,8 +144,12 @@ impl ApplicationHandler<State> for App {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => state.resize(size.width, size.height),
             WindowEvent::RedrawRequested => {
-                state.update();
-                match state.render() {
+                let now = Instant::now();
+                let delta_time = (now - state.last_frame_time).as_secs_f32();
+                state.last_frame_time = now;
+                state.update(delta_time);
+
+                match state.render(delta_time) {
                     Ok(_) => {}
                     Err(e) => {
                         log::error!("{e}");

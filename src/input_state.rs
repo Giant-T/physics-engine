@@ -1,4 +1,4 @@
-use cgmath::{Vector2, num_traits::Zero};
+use nalgebra::Vector2;
 use winit::keyboard::KeyCode;
 
 pub struct InputState {
@@ -13,7 +13,7 @@ pub struct InputState {
 
 impl InputState {
     pub fn reset_mouse_delta(&mut self) {
-        self.mouse_delta = Vector2::zero();
+        self.mouse_delta = Vector2::zeros();
     }
 
     pub fn update_keys(&mut self, code: KeyCode, is_pressed: bool) {
@@ -76,7 +76,7 @@ impl InputState {
 impl Default for InputState {
     fn default() -> Self {
         Self {
-            mouse_delta: Vector2::zero(),
+            mouse_delta: Vector2::zeros(),
             is_forward_pressed: false,
             is_backward_pressed: false,
             is_left_pressed: false,

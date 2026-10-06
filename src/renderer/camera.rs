@@ -1,11 +1,11 @@
 use std::f32::consts::PI;
 
-use cgmath::{InnerSpace, Matrix4, Point3, SquareMatrix, Vector3, num_traits::Zero};
+use nalgebra::{Matrix4, Perspective3, Point3, Vector3};
 use wgpu::util::DeviceExt;
 
 use crate::input_state::InputState;
 
-use super::{OPENGL_TO_WGPU_MATRIX, Transform};
+use super::Transform;
 
 const PITCH_LIMIT: f32 = PI / 2.0 - 0.001;
 
@@ -38,9 +38,8 @@ impl Camera {
     ) -> Self {
         let transform = Transform::from_position_pitch_yaw(position, pitch, yaw);
 
-        let matrix: [[f32; 4]; 4] = (OPENGL_TO_WGPU_MATRIX
-            * Self::proj_matrix(aspect, fovy, znear, zfar)
-            * transform.matrix().invert().unwrap())
+        let matrix: [[f32; 4]; 4] = (Self::proj_matrix(aspect, fovy, znear, zfar)
+            * transform.matrix().try_inverse().unwrap())
         .into();
         let view_proj_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("View Proj Buffer"),
@@ -113,15 +112,13 @@ impl Camera {
     }
 
     fn proj_matrix(aspect: f32, fovy: f32, znear: f32, zfar: f32) -> Matrix4<f32> {
-        cgmath::perspective(cgmath::Deg(fovy), aspect, znear, zfar)
+        Perspective3::new(aspect, fovy, znear, zfar).to_homogeneous()
     }
 
     fn build_matrix(&self) -> Matrix4<f32> {
-        let view = self.transform.matrix().invert().unwrap();
+        let view = self.transform.matrix().try_inverse().unwrap();
 
-        OPENGL_TO_WGPU_MATRIX
-            * Self::proj_matrix(self.aspect, self.fovy, self.znear, self.zfar)
-            * view
+        Self::proj_matrix(self.aspect, self.fovy, self.znear, self.zfar) * view
     }
 
     pub fn set_aspect(&mut self, aspect: f32) {
@@ -192,7 +189,7 @@ impl CameraController {
         let up = transform.up();
         let right = transform.right();
 
-        let mut translation = Vector3::<f32>::zero();
+        let mut translation = Vector3::<f32>::zeros();
 
         // Avancer/Reculer
         if input.is_forward_pressed() {
@@ -218,7 +215,7 @@ impl CameraController {
             translation -= up;
         }
 
-        if translation.magnitude2() > 0.0 {
+        if translation.magnitude_squared() > 0.0 {
             transform.translate(translation.normalize() * self.speed * delta_time);
         }
     }

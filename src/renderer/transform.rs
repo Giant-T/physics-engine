@@ -1,14 +1,8 @@
-use cgmath::{
-    Deg, EuclideanSpace, InnerSpace, Matrix4, Point3, Quaternion, Rad, Rotation3, SquareMatrix,
-    Vector3,
-    num_traits::{One, Zero},
-};
-
-use super::OPENGL_TO_WGPU_MATRIX;
+use nalgebra::{Matrix4, Point3, Unit, UnitQuaternion, Vector3};
 
 pub struct Transform {
     translation: Vector3<f32>,
-    rotation: Quaternion<f32>,
+    rotation: UnitQuaternion<f32>,
     scale: f32,
 }
 
@@ -16,10 +10,10 @@ pub struct Transform {
 impl Transform {
     pub fn from_position_and_rotation(
         position: Point3<f32>,
-        rotation: cgmath::Quaternion<f32>,
+        rotation: UnitQuaternion<f32>,
     ) -> Self {
         Self {
-            translation: position.to_vec(),
+            translation: position.coords,
             rotation,
             ..Default::default()
         }
@@ -31,7 +25,7 @@ impl Transform {
             ..Default::default()
         }
     }
-    pub fn from_rotation(rotation: Quaternion<f32>) -> Self {
+    pub fn from_rotation(rotation: UnitQuaternion<f32>) -> Self {
         Self {
             rotation,
             ..Default::default()
@@ -47,14 +41,15 @@ impl Transform {
 
     pub fn from_position_pitch_yaw(position: Point3<f32>, pitch: f32, yaw: f32) -> Self {
         Self {
-            translation: position.to_vec(),
-            rotation: Quaternion::from_angle_y(Rad(yaw)) * Quaternion::from_angle_x(Rad(pitch)),
+            translation: position.coords,
+            rotation: UnitQuaternion::from_axis_angle(&Vector3::y_axis(), yaw)
+                * UnitQuaternion::from_axis_angle(&Vector3::x_axis(), pitch),
             ..Default::default()
         }
     }
 
     pub fn rotate(&mut self, axis: Vector3<f32>, angle: f32) {
-        let rotation = Quaternion::from_axis_angle(axis.normalize(), Deg(angle));
+        let rotation = UnitQuaternion::from_axis_angle(&Unit::new_normalize(axis), angle);
 
         self.rotation = self.rotation * rotation;
     }
@@ -68,19 +63,15 @@ impl Transform {
     }
 
     pub fn point_to_world(&self, point: Point3<f32>) -> Point3<f32> {
-        use cgmath::Transform;
-
-        self.matrix().transform_point(point)
+        self.matrix().transform_point(&point)
     }
 
     pub fn point_to_local(&self, point: Point3<f32>) -> Point3<f32> {
-        use cgmath::Transform;
-
-        self.matrix().invert().unwrap().transform_point(point)
+        self.matrix().try_inverse().unwrap().transform_point(&point)
     }
 
     pub fn to_buffer(&self) -> [[f32; 4]; 4] {
-        (OPENGL_TO_WGPU_MATRIX * self.matrix()).into()
+        self.matrix().into()
     }
 
     pub fn position(&self) -> Point3<f32> {
@@ -88,27 +79,28 @@ impl Transform {
     }
 
     pub fn forward(&self) -> Vector3<f32> {
-        (self.rotation * -Vector3::unit_z()).normalize()
+        (self.rotation * -Vector3::z()).normalize()
     }
 
     pub fn up(&self) -> Vector3<f32> {
-        (self.rotation * Vector3::unit_y()).normalize()
+        (self.rotation * Vector3::y()).normalize()
     }
 
     pub fn right(&self) -> Vector3<f32> {
-        (self.rotation * Vector3::unit_x()).normalize()
+        (self.rotation * Vector3::x()).normalize()
     }
 
     pub fn matrix(&self) -> Matrix4<f32> {
-        let translation = Matrix4::from_translation(self.translation);
+        let translation = Matrix4::new_translation(&self.translation);
         let rotation = Matrix4::from(self.rotation);
-        let scale = Matrix4::from_scale(self.scale);
+        let scale = Matrix4::new_scaling(self.scale);
 
         translation * rotation * scale
     }
 
     pub fn update_rotation_from_pitch_yaw(&mut self, pitch: f32, yaw: f32) {
-        self.rotation = Quaternion::from_angle_y(Rad(yaw)) * Quaternion::from_angle_x(Rad(pitch));
+        self.rotation = UnitQuaternion::from_axis_angle(&Vector3::y_axis(), yaw)
+            * UnitQuaternion::from_axis_angle(&Vector3::x_axis(), pitch);
     }
 
     pub fn ui(&mut self, ui: &mut egui::Ui) {
@@ -122,7 +114,11 @@ impl Transform {
         });
         ui.columns(2, |columns| {
             columns[0].label("Scale:");
-            columns[1].add(egui::DragValue::new(&mut self.scale).speed(0.1))
+            columns[1].add(
+                egui::DragValue::new(&mut self.scale)
+                    .range(0.0..=100.0)
+                    .speed(0.1),
+            )
         });
     }
 }
@@ -130,8 +126,8 @@ impl Transform {
 impl Default for Transform {
     fn default() -> Self {
         Self {
-            translation: Vector3::zero(),
-            rotation: Quaternion::one(),
+            translation: Vector3::zeros(),
+            rotation: UnitQuaternion::default(),
             scale: 1.0,
         }
     }
