@@ -1390,6 +1390,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "nalgebra-sparse"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e8935b578b6a012f3667131452add895472f37c242d2844497daf7c49f6b8059"
+dependencies = [
+ "nalgebra",
+ "num-traits",
+]
+
+[[package]]
 name = "ndk"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1892,6 +1902,7 @@ dependencies = [
  "env_logger",
  "log",
  "nalgebra",
+ "nalgebra-sparse",
  "pollster",
  "tobj",
  "wgpu",

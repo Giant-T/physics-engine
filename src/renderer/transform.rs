@@ -1,12 +1,13 @@
 use nalgebra::{Matrix4, Point3, Unit, UnitQuaternion, Vector3};
 
+use crate::renderer::UIElement;
+
 pub struct Transform {
     translation: Vector3<f32>,
     rotation: UnitQuaternion<f32>,
     scale: f32,
 }
 
-#[allow(dead_code)]
 impl Transform {
     pub fn from_position_and_rotation(
         position: Point3<f32>,
@@ -102,8 +103,10 @@ impl Transform {
         self.rotation = UnitQuaternion::from_axis_angle(&Vector3::y_axis(), yaw)
             * UnitQuaternion::from_axis_angle(&Vector3::x_axis(), pitch);
     }
+}
 
-    pub fn ui(&mut self, ui: &mut egui::Ui) {
+impl UIElement for Transform {
+    fn ui(&mut self, ui: &mut egui::Ui) {
         ui.columns(2, |columns| {
             columns[0].label("Position:");
             columns[1].columns(3, |columns| {

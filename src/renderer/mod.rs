@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use egui_wgpu::ScreenDescriptor;
-use nalgebra::{Point3, UnitQuaternion, Vector3};
+use nalgebra::{Point3, Vector3};
 use winit::{event::WindowEvent, window::Window};
 
 use camera::Camera;
@@ -9,19 +9,26 @@ use camera::Camera;
 mod camera;
 mod light;
 mod mesh;
-mod object;
 mod pipeline;
 mod texture;
 mod transform;
 mod vertex;
 
+use super::scenes::Scene;
 use light::PointLight;
-use mesh::Mesh;
 use texture::Texture;
 
 pub use camera::CameraController;
-pub use object::RenderObject;
+pub use mesh::MeshRenderer;
 pub use transform::Transform;
+
+pub trait Renderable {
+    fn render(&self, renderer: &Renderer, render_pass: &mut wgpu::RenderPass);
+}
+
+pub trait UIElement {
+    fn ui(&mut self, ui: &mut egui::Ui);
+}
 
 pub struct Renderer {
     is_surface_configured: bool,
@@ -35,7 +42,6 @@ pub struct Renderer {
     ui_ctx: egui::Context,
     ui_state: egui_winit::State,
 
-    render_objects: Box<[RenderObject]>,
     light: PointLight,
 
     depth_texture: Texture,
@@ -115,34 +121,6 @@ impl Renderer {
             Transform::from_translation(Vector3::new(0.0, 30.0, 0.0)),
         );
 
-        let render_objects = Box::new([
-            RenderObject::new(
-                &device,
-                &config,
-                "Stanford Bunny",
-                &[
-                    Some(camera.bind_group_layout()),
-                    Some(light.bind_group_layout()),
-                ],
-                Transform::from_rotation(UnitQuaternion::from_axis_angle(
-                    &Vector3::y_axis(),
-                    90.0f32.to_radians(),
-                )),
-                Mesh::load_model("stanford-bunny.obj", &device),
-            ),
-            RenderObject::new(
-                &device,
-                &config,
-                "Suzanne",
-                &[
-                    Some(camera.bind_group_layout()),
-                    Some(light.bind_group_layout()),
-                ],
-                Transform::from_scale(0.1),
-                Mesh::load_model("suzanne.obj", &device),
-            ),
-        ]);
-
         let ui_renderer = egui_wgpu::Renderer::new(
             &device,
             surface_format,
@@ -175,7 +153,6 @@ impl Renderer {
             ui_ctx,
             ui_state,
 
-            render_objects,
             light,
 
             depth_texture,
@@ -199,7 +176,12 @@ impl Renderer {
         self.depth_texture = Texture::create_depth_texture(&self.device, &self.config);
     }
 
-    pub fn render(&mut self, window: &Window, delta_time: f32) -> anyhow::Result<()> {
+    pub fn render(
+        &mut self,
+        window: &Window,
+        scene: &mut Scene,
+        delta_time: f32,
+    ) -> anyhow::Result<()> {
         if !self.is_surface_configured {
             return Ok(());
         }
@@ -225,8 +207,8 @@ impl Renderer {
                 label: Some("Render Encoder"),
             });
 
-        self.render_scene(&view, &mut encoder);
-        self.render_ui(&view, &mut encoder, window, delta_time);
+        self.render_scene(&view, &mut encoder, scene);
+        self.render_ui(&view, &mut encoder, window, scene, delta_time);
 
         self.queue.submit(std::iter::once(encoder.finish()));
         self.queue.present(output);
@@ -234,7 +216,12 @@ impl Renderer {
         Ok(())
     }
 
-    fn render_scene(&mut self, view: &wgpu::TextureView, encoder: &mut wgpu::CommandEncoder) {
+    fn render_scene(
+        &mut self,
+        view: &wgpu::TextureView,
+        encoder: &mut wgpu::CommandEncoder,
+        scene: &mut Scene,
+    ) {
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Render Pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -264,9 +251,7 @@ impl Renderer {
             multiview_mask: None,
         });
 
-        for obj in &self.render_objects {
-            obj.render(self, &mut render_pass);
-        }
+        scene.render(self, &mut render_pass);
     }
 
     fn render_ui(
@@ -274,6 +259,7 @@ impl Renderer {
         view: &wgpu::TextureView,
         encoder: &mut wgpu::CommandEncoder,
         window: &Window,
+        scene: &mut Scene,
         delta_time: f32,
     ) {
         let input = self.ui_state.take_egui_input(window);
@@ -282,11 +268,7 @@ impl Renderer {
             ui.label(format!("{delta_time:.6} delta time"));
             ui.label(format!("{fps:.0} fps"));
 
-            egui::Window::new("Objets").show(ui, |ui| {
-                for obj in &mut self.render_objects {
-                    obj.ui(ui);
-                }
-            });
+            scene.ui(ui);
         });
 
         let clipped_primitives = self
@@ -350,9 +332,6 @@ impl Renderer {
 
     pub fn update(&mut self) {
         self.camera.update_uniforms(&self.queue);
-        for obj in &self.render_objects {
-            obj.update_uniforms(&self.queue);
-        }
     }
 
     pub fn camera_mut(&mut self) -> &mut Camera {

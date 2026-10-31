@@ -12,6 +12,7 @@ use winit::{
 use super::{
     input_state::InputState,
     renderer::{CameraController, Renderer},
+    scenes::{Scene, SceneDescriptor},
 };
 
 pub struct State {
@@ -21,6 +22,8 @@ pub struct State {
 
     camera_controller: CameraController,
 
+    scene: Scene,
+
     cursor_locked: bool,
     last_frame_time: Instant,
 }
@@ -29,6 +32,13 @@ impl State {
     pub async fn new(window: Arc<Window>) -> anyhow::Result<Self> {
         let renderer = Renderer::new(window.clone()).await?;
         let camera_controller = CameraController::new(10.0, 0.005);
+        let scene = Scene::build_scene(
+            SceneDescriptor {
+                name: "Test",
+                mesh_path: "bunny_coarser.mesh",
+            },
+            &renderer,
+        );
 
         Ok(Self {
             window,
@@ -36,6 +46,8 @@ impl State {
             input_state: Default::default(),
 
             camera_controller,
+
+            scene,
 
             last_frame_time: Instant::now(),
             cursor_locked: false,
@@ -95,7 +107,8 @@ impl State {
 
         self.input_state.reset_mouse_delta();
 
-        self.renderer.render(&self.window, delta_time)
+        self.renderer
+            .render(&self.window, &mut self.scene, delta_time)
     }
 
     fn handle_mouse_move(&mut self, mouse_delta: (f64, f64)) {
