@@ -1,67 +1,76 @@
-use std::rc::Rc;
+use std::{rc::Rc, sync::Mutex, time::Instant};
 
-use nalgebra::DVector;
+use nalgebra::{DVector, Vector3};
 use nalgebra_sparse::{CooMatrix, CsrMatrix};
 
-use crate::physics::{linalg::ConjugateGradient, tet_mesh::TetMesh};
-
-use super::elastic_model::ElasticModel;
+use super::{elastic_model::ElasticModel, linalg::ConjugateGradient, tet_mesh::TetMesh};
 
 pub struct SolverOptions {
-    time_step: f64,
-    max_iterations: usize,
-    tolerance: f64,
+    pub time_step: f64,
+    pub max_iterations: usize,
+    pub tolerance: f64,
 }
 
 impl Default for SolverOptions {
     fn default() -> Self {
         Self {
             time_step: 0.02,
-            max_iterations: 2000,
-            tolerance: 1e-10,
+            max_iterations: 1000,
+            tolerance: 1e-5,
         }
     }
 }
 
 pub struct ImplicitSolver {
-    model: Rc<ElasticModel>,
+    model: Rc<Mutex<ElasticModel>>,
     time_step: f64,
-    last_iterations: usize,
-    last_residual: f64,
     conjugate_gradient: ConjugateGradient,
+    x: DVector<f64>,
+    v: DVector<f64>,
+    delta_v: DVector<f64>,
 }
 
 impl ImplicitSolver {
-    pub fn new(model: Rc<ElasticModel>, options: SolverOptions) -> Self {
+    pub fn new(model: Rc<Mutex<ElasticModel>>, options: SolverOptions) -> Self {
+        log::info!("ImplicitSolver::new");
+
+        let binding = model.clone();
+        let model_val = binding.lock().unwrap();
+        let rest_positions = model_val.mesh().rest_positions();
+        let x = DVector::from_iterator(
+            rest_positions.len() * 3,
+            rest_positions.iter().flat_map(|v| v.iter().copied()),
+        );
+        let v = DVector::zeros(model_val.mesh().dof_count());
+        let delta_v = DVector::zeros(model_val.mesh().dof_count());
         Self {
             model,
             time_step: options.time_step,
             conjugate_gradient: ConjugateGradient::new(options.max_iterations, options.tolerance),
-            last_iterations: 0,
-            last_residual: 0.0,
+            x,
+            v,
+            delta_v,
         }
     }
 
-    pub fn assemble_system(
-        &self,
-        x: &DVector<f64>,
-        v: &DVector<f64>,
-        h: f64,
-    ) -> (CsrMatrix<f64>, DVector<f64>) {
-        let system_matrix = self.system_matrix(x, h);
+    pub fn assemble_system(&self, h: f64) -> (CsrMatrix<f64>, DVector<f64>) {
+        let stiffness = self.model.lock().unwrap().stiffness_matrix(&self.x).clone();
+        let system_matrix = self.system_matrix(h, &stiffness);
 
-        let stiffness = self.model.stiffness_matrix(x);
-        let f = self.model.compute_forces_with_stiffness(x, v, &stiffness);
-        let rhs = h * (f - h * stiffness * v);
+        let f = self
+            .model
+            .lock()
+            .unwrap()
+            .compute_forces_with_stiffness(&self.x, &self.v, &stiffness);
+        let rhs = h * (f - h * stiffness * &self.v);
 
         (system_matrix, rhs)
     }
 
-    pub fn system_matrix(&self, x: &DVector<f64>, h: f64) -> CsrMatrix<f64> {
-        let stiffness = self.model.stiffness_matrix(x);
-
-        let mass_factor = 1.0 + h * self.model.rayleigh_alpha();
-        let stiffness_factor = h.powi(2) + h * self.model.rayleigh_beta();
+    pub fn system_matrix(&self, h: f64, stiffness: &CsrMatrix<f64>) -> CsrMatrix<f64> {
+        let model = self.model.lock().unwrap();
+        let mass_factor = 1.0 + h * model.rayleigh_alpha();
+        let stiffness_factor = h.powi(2) + h * model.rayleigh_beta();
 
         let n = stiffness.nrows();
         let mut system_matrix = CooMatrix::new(n, n);
@@ -70,28 +79,67 @@ impl ImplicitSolver {
             system_matrix.push(i, j, stiffness_factor * val);
         }
 
-        for (i, val) in self.model.lumped_masses().iter().enumerate() {
+        for (i, val) in model.lumped_masses().iter().enumerate() {
             system_matrix.push(i, i, mass_factor * val);
         }
 
         CsrMatrix::from(&system_matrix)
     }
 
-    pub fn step(&mut self, x: &mut DVector<f64>, v: &mut DVector<f64>) {
+    pub fn step(&mut self) {
         let h = self.time_step;
-        let (system_matrix, rhs) = self.assemble_system(x, v, h);
-        Self::apply_pin_constraints(self.model.mesh(), &system_matrix, &rhs);
-        let delta_v = self.solve(&system_matrix, &rhs);
+        let (mut system_matrix, mut rhs) = self.assemble_system(h);
 
-        *v += delta_v;
-        *x += h * v.clone();
+        Self::apply_pin_constraints(
+            self.model.lock().unwrap().mesh(),
+            &mut system_matrix,
+            &mut rhs,
+        );
+
+        self.delta_v = self.solve(&system_matrix, &rhs);
+
+        self.v += &self.delta_v;
+        self.x += h * &self.v;
     }
 
-    fn apply_pin_constraints(mesh: &TetMesh, system_matrix: &CsrMatrix<f64>, rhs: &DVector<f64>) {
-        todo!();
+    fn apply_pin_constraints(
+        mesh: &TetMesh,
+        system_matrix: &mut CsrMatrix<f64>,
+        rhs: &mut DVector<f64>,
+    ) {
+        let mut pinned = vec![false; system_matrix.nrows()];
+        for i in 0..mesh.node_count() {
+            if mesh.is_pinned(i) {
+                pinned[(3 * i)..(3 * i + 3)].fill(true);
+            }
+        }
+
+        for (row, col, val) in system_matrix.triplet_iter_mut() {
+            if pinned[row] || pinned[col] {
+                *val = if row == col { 1.0 } else { 0.0 };
+            }
+        }
+
+        for i in 0..rhs.len() {
+            if pinned[i] {
+                rhs[i] = 0.0;
+            }
+        }
     }
 
     fn solve(&mut self, system_matrix: &CsrMatrix<f64>, rhs: &DVector<f64>) -> DVector<f64> {
-        self.conjugate_gradient.solve(system_matrix, rhs)
+        self.conjugate_gradient
+            .solve(system_matrix, rhs, &self.delta_v)
+    }
+
+    pub fn current_positions(&self) -> Vec<Vector3<f64>> {
+        let current_positions: Vec<Vector3<f64>> = self
+            .x
+            .as_slice()
+            .chunks_exact(3)
+            .map(|v| Vector3::new(v[0], v[1], v[2]))
+            .collect();
+
+        current_positions
     }
 }

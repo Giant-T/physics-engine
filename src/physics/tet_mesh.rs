@@ -109,6 +109,8 @@ impl TetMesh {
     }
 
     pub fn load_mesh_file(path: &str) -> Self {
+        log::info!("TetMesh::load_mesh_file");
+
         let mut buf = String::new();
         File::open(path).unwrap().read_to_string(&mut buf).unwrap();
         let mut lines = buf.lines().map(|line| line.trim());
@@ -176,6 +178,8 @@ impl TetMesh {
     }
 
     pub fn box_mesh(cells_x: usize, cells_y: usize, cells_z: usize, cell_size: f64) -> Self {
+        log::info!("TetMesh::box_mesh");
+
         if cells_x == 0 || cells_y == 0 || cells_z == 0 {
             panic!("Il doit y avoir au moins une cellule par axe.");
         }

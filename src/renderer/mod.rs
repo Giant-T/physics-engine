@@ -180,7 +180,7 @@ impl Renderer {
         &mut self,
         window: &Window,
         scene: &mut Scene,
-        delta_time: f32,
+        delta_time: f64,
     ) -> anyhow::Result<()> {
         if !self.is_surface_configured {
             return Ok(());
@@ -260,7 +260,7 @@ impl Renderer {
         encoder: &mut wgpu::CommandEncoder,
         window: &Window,
         scene: &mut Scene,
-        delta_time: f32,
+        delta_time: f64,
     ) {
         let input = self.ui_state.take_egui_input(window);
         let fps = 1.0 / delta_time;

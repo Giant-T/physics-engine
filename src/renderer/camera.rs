@@ -172,7 +172,7 @@ impl CameraController {
         &self,
         input: &InputState,
         camera: &mut Camera,
-        delta_time: f32,
+        delta_time: f64,
         cursor_locked: bool,
     ) {
         self.update_translation(input, camera, delta_time);
@@ -182,7 +182,7 @@ impl CameraController {
         }
     }
 
-    fn update_translation(&self, input: &InputState, camera: &mut Camera, delta_time: f32) {
+    fn update_translation(&self, input: &InputState, camera: &mut Camera, delta_time: f64) {
         let transform = camera.transform_mut();
 
         let forward = transform.forward();
@@ -216,7 +216,7 @@ impl CameraController {
         }
 
         if translation.magnitude_squared() > 0.0 {
-            transform.translate(translation.normalize() * self.speed * delta_time);
+            transform.translate(translation.normalize() * self.speed * delta_time as f32);
         }
     }
 

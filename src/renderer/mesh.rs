@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use nalgebra::Vector3;
+use nalgebra::{DVector, Vector3};
 use wgpu::util::DeviceExt;
 
 use crate::physics::tet_mesh::TetMesh;
@@ -24,7 +24,7 @@ impl MeshRenderer {
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: None, // TODO: Potentiellement ajouter des labels
                 contents: bytemuck::cast_slice(vertices),
-                usage: wgpu::BufferUsages::VERTEX,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             });
         let index_buffer = renderer
             .device
@@ -93,7 +93,7 @@ impl MeshRenderer {
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: None, // TODO: Potentiellement ajouter des labels
                 contents: bytemuck::cast_slice(&vertices),
-                usage: wgpu::BufferUsages::VERTEX,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             });
 
         let num_indices = indices.len() as u32 * 3;
@@ -138,6 +138,17 @@ impl MeshRenderer {
         unique_indices.sort();
 
         unique_indices
+    }
+
+    pub fn update_mesh(&mut self, renderer: &Renderer, current_positions: &[Vector3<f64>]) {
+        renderer.queue.write_buffer(
+            &self.vertex_buffer,
+            0,
+            bytemuck::cast_slice(&Self::vertices_from_positions(
+                current_positions,
+                &self.unique_indices,
+            )),
+        );
     }
 }
 

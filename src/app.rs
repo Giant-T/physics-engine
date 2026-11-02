@@ -36,6 +36,7 @@ impl State {
             SceneDescriptor {
                 name: "Test",
                 mesh_path: "bunny_coarser.mesh",
+                time_step: 0.2,
             },
             &renderer,
         );
@@ -92,7 +93,8 @@ impl State {
         }
     }
 
-    fn update(&mut self, delta_time: f32) {
+    fn update(&mut self, delta_time: f64) {
+        self.scene.update(&self.renderer, delta_time);
         self.camera_controller.update_camera(
             &self.input_state,
             self.renderer.camera_mut(),
@@ -102,7 +104,7 @@ impl State {
         self.renderer.update();
     }
 
-    pub fn render(&mut self, delta_time: f32) -> anyhow::Result<()> {
+    pub fn render(&mut self, delta_time: f64) -> anyhow::Result<()> {
         self.window.request_redraw();
 
         self.input_state.reset_mouse_delta();
@@ -158,7 +160,7 @@ impl ApplicationHandler<State> for App {
             WindowEvent::Resized(size) => state.resize(size.width, size.height),
             WindowEvent::RedrawRequested => {
                 let now = Instant::now();
-                let delta_time = (now - state.last_frame_time).as_secs_f32();
+                let delta_time = (now - state.last_frame_time).as_secs_f64();
                 state.last_frame_time = now;
                 state.update(delta_time);
 

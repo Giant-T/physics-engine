@@ -14,6 +14,16 @@ impl LameParameters {
     pub fn new(mu: f64, lambda: f64) -> Self {
         Self { mu, lambda }
     }
+
+    pub fn from_young_poisson(young: f64, poisson: f64) -> Self {
+        debug_assert!(young > 0.0);
+        debug_assert!(poisson > -1.0 && poisson < 0.5);
+
+        Self {
+            mu: young / (2.0 * (1.0 + poisson)),
+            lambda: young * poisson / ((1.0 + poisson) * (1.0 - 2.0 * poisson)),
+        }
+    }
 }
 
 pub struct ElasticModel {
@@ -23,19 +33,34 @@ pub struct ElasticModel {
     total_mass: f64,
     rayleigh_alpha: f64,
     rayleigh_beta: f64,
+    damping: CsrMatrix<f64>,
 }
 
 impl ElasticModel {
     pub fn new(mesh: TetMesh, lame: LameParameters, density: f64) -> Self {
+        log::info!("ElasticModel::new");
+
         let (lumped_masses, total_mass) = Self::build_masses(&mesh, density);
+        let rayleigh_alpha = 0.0;
+        let rayleigh_beta = 0.0;
+
+        let rest_positions = mesh.rest_positions();
+        let x = DVector::from_iterator(
+            rest_positions.len() * 3,
+            rest_positions.iter().flat_map(|v| v.iter().copied()),
+        );
+        let stiffness = Self::compute_stiffness(&mesh, &lame, &x);
+        let damping =
+            Self::initialize_damping(&lumped_masses, &stiffness, rayleigh_alpha, rayleigh_beta);
 
         Self {
             mesh,
             lame,
             lumped_masses,
             total_mass,
-            rayleigh_alpha: 0.0,
-            rayleigh_beta: 0.0,
+            damping,
+            rayleigh_alpha,
+            rayleigh_beta,
         }
     }
 
@@ -54,6 +79,8 @@ impl ElasticModel {
                 lumped_masses.rows_mut(idx * 3, 3).add_scalar_mut(node_mass);
             }
         }
+
+        debug_assert!(lumped_masses.iter().all(|m| *m > 0.0));
 
         (lumped_masses, total_mass)
     }
@@ -142,23 +169,8 @@ impl ElasticModel {
         f
     }
 
-    pub fn compute_forces(&self, x: &DVector<f64>, v: &DVector<f64>) -> DVector<f64> {
-        if self.rayleigh_beta != 0.0 {
-            self.compute_forces_with_stiffness(x, v, &self.stiffness_matrix(x))
-        } else {
-            self.compute_forces_with_stiffness(
-                x,
-                v,
-                &CsrMatrix::from(&CooMatrix::new(
-                    self.mesh.dof_count(),
-                    self.mesh.dof_count(),
-                )),
-            )
-        }
-    }
-
     pub fn compute_forces_with_stiffness(
-        &self,
+        &mut self,
         x: &DVector<f64>,
         v: &DVector<f64>,
         stiffness: &CsrMatrix<f64>,
@@ -182,10 +194,22 @@ impl ElasticModel {
 
         f
     }
+    fn model_element_stiffness(
+        &self,
+        element_idx: usize,
+        x: &DVector<f64>,
+    ) -> SMatrix<f64, 12, 12> {
+        Self::element_stiffness(&self.mesh(), &self.lame, element_idx, x)
+    }
 
-    fn element_stiffness(&self, element_idx: usize, x: &DVector<f64>) -> SMatrix<f64, 12, 12> {
-        let tet = &self.mesh.tets()[element_idx];
-        let element = &self.mesh.elements()[element_idx];
+    fn element_stiffness(
+        mesh: &TetMesh,
+        lame: &LameParameters,
+        element_idx: usize,
+        x: &DVector<f64>,
+    ) -> SMatrix<f64, 12, 12> {
+        let tet = &mesh.tets()[element_idx];
+        let element = &mesh.elements()[element_idx];
 
         let F = element.deformation_gradient(
             &x.fixed_rows::<3>(3 * tet[0]).into(),
@@ -210,7 +234,7 @@ impl ElasticModel {
                 }
 
                 let delta_F = delta_shape * rest_inverse;
-                let delta_P = stvk::delta_first_piola_kirchhoff(&F, &delta_F, &self.lame);
+                let delta_P = stvk::delta_first_piola_kirchhoff(&F, &delta_F, lame);
                 let delta_H = -volume * delta_P * rest_inverse.transpose();
 
                 let mut force_differential = SVector::<f64, 12>::zeros();
@@ -231,12 +255,16 @@ impl ElasticModel {
         stiffness
     }
 
-    pub fn stiffness_matrix(&self, x: &DVector<f64>) -> CsrMatrix<f64> {
-        let mut matrix = CooMatrix::<f64>::new(self.mesh.dof_count(), self.mesh.dof_count());
+    fn compute_stiffness(
+        mesh: &TetMesh,
+        lame: &LameParameters,
+        x: &DVector<f64>,
+    ) -> CsrMatrix<f64> {
+        let mut matrix = CooMatrix::<f64>::new(mesh.dof_count(), mesh.dof_count());
 
-        for e in 0..self.mesh.tet_count() {
-            let tet = &self.mesh.tets()[e];
-            let local = self.element_stiffness(e, x);
+        for e in 0..mesh.tet_count() {
+            let tet = &mesh.tets()[e];
+            let local = Self::element_stiffness(mesh, lame, e, &x);
 
             for a in 0..tet.len() {
                 for b in 0..tet.len() {
@@ -253,23 +281,43 @@ impl ElasticModel {
         CsrMatrix::from(&matrix)
     }
 
-    pub fn damping_matrix(&self, stiffness: &CsrMatrix<f64>) -> CsrMatrix<f64> {
-        let n = self.lumped_masses.len();
+    pub fn stiffness_matrix(&self, x: &DVector<f64>) -> CsrMatrix<f64> {
+        Self::compute_stiffness(&self.mesh, &self.lame, x)
+    }
+
+    fn initialize_damping(
+        lumped_masses: &DVector<f64>,
+        stiffness: &CsrMatrix<f64>,
+        rayleigh_alpha: f64,
+        rayleigh_beta: f64,
+    ) -> CsrMatrix<f64> {
+        let n = lumped_masses.len();
         let mut matrix = CooMatrix::new(n, n);
 
-        if self.rayleigh_alpha != 0.0 {
-            for (i, val) in self.lumped_masses.iter().enumerate() {
-                matrix.push(i, i, self.rayleigh_alpha * val);
+        if rayleigh_alpha != 0.0 {
+            for (i, val) in lumped_masses.iter().enumerate() {
+                matrix.push(i, i, rayleigh_alpha * val);
             }
         }
 
-        if self.rayleigh_beta != 0.0 {
+        if rayleigh_beta != 0.0 {
             for (i, j, val) in stiffness.triplet_iter() {
-                matrix.push(i, j, self.rayleigh_beta * val);
+                matrix.push(i, j, rayleigh_beta * val);
             }
         }
 
         CsrMatrix::from(&matrix)
+    }
+
+    pub fn damping_matrix(&mut self, stiffness: &CsrMatrix<f64>) -> &CsrMatrix<f64> {
+        for (i, j, val) in self.damping.triplet_iter_mut() {
+            *val = self.rayleigh_beta * stiffness.get_entry(i, j).unwrap().into_value();
+            if i == j {
+                *val += self.rayleigh_alpha * self.lumped_masses[i];
+            }
+        }
+
+        &self.damping
     }
 
     pub fn rayleigh_alpha(&self) -> f64 {
