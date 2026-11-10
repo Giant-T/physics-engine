@@ -14,7 +14,7 @@ Vous pouvez aussi simplement compiler le programme avec la commande suivante:
 ```bash
 cargo build -r
 ```
-Ne faites pas attention au multiple warnings, c'est principalement puisque
+Ne faites pas attention aux multiples warnings, c'est principalement puisque
 rust a des opinions fortes sur la nomenclature des variables
 (snake_case tandis que parfois j'utilise des lettres majuscules pour faciliter la compréhension par rapport aux formules données dans le cours)
 
