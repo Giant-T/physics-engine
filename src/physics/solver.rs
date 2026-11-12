@@ -96,7 +96,13 @@ impl ImplicitSolver {
             &mut rhs,
         );
 
+        let now = Instant::now();
         self.delta_v = self.solve(&system_matrix, &rhs);
+        let elapsed = now.elapsed();
+        log::info!(
+            "elapsed CG: {elapsed:?} {} iterations",
+            self.conjugate_gradient.iterations(),
+        );
 
         self.v += &self.delta_v;
         self.x += h * &self.v;
@@ -130,6 +136,20 @@ impl ImplicitSolver {
     fn solve(&mut self, system_matrix: &CsrMatrix<f64>, rhs: &DVector<f64>) -> DVector<f64> {
         self.conjugate_gradient
             .solve(system_matrix, rhs, &self.delta_v)
+    }
+
+    pub fn reset(&mut self) {
+        let model = self.model.lock().unwrap();
+        self.x = DVector::from_iterator(
+            model.mesh().rest_positions().len() * 3,
+            model
+                .mesh()
+                .rest_positions()
+                .iter()
+                .flat_map(|v| v.iter().copied()),
+        );
+        self.v = DVector::zeros(model.mesh().dof_count());
+        self.delta_v = DVector::zeros(model.mesh().dof_count());
     }
 
     pub fn current_positions(&self) -> Vec<Vector3<f64>> {

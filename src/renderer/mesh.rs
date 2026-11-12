@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use nalgebra::{DVector, Vector3};
+use nalgebra::Vector3;
 use wgpu::util::DeviceExt;
 
 use crate::physics::tet_mesh::TetMesh;
@@ -22,14 +22,14 @@ impl MeshRenderer {
         let vertex_buffer = renderer
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: None, // TODO: Potentiellement ajouter des labels
+                label: None,
                 contents: bytemuck::cast_slice(vertices),
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             });
         let index_buffer = renderer
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: None, // TODO: Potentiellement ajouter des labels
+                label: None,
                 contents: bytemuck::cast_slice(indices),
                 usage: wgpu::BufferUsages::INDEX,
             });

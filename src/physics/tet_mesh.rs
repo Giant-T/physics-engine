@@ -266,6 +266,65 @@ impl TetMesh {
             .collect()
     }
 
+    fn bounding_box_min(&self) -> Vector3<f64> {
+        self.rest_positions
+            .iter()
+            .fold(self.rest_positions.first().unwrap().clone(), |acc, el| {
+                acc.inf(el)
+            })
+    }
+
+    fn bounding_box_max(&self) -> Vector3<f64> {
+        self.rest_positions
+            .iter()
+            .fold(self.rest_positions.first().unwrap().clone(), |acc, el| {
+                acc.sup(el)
+            })
+    }
+
+    pub fn pin_left_face(&mut self, tolerance: f64) -> usize {
+        let left = self.bounding_box_min().x;
+
+        let mut count = 0;
+        for i in 0..self.node_count() {
+            if self.rest_positions[i].x <= left + tolerance {
+                self.pinned[i] = true;
+                count += 1;
+            }
+        }
+        count
+    }
+
+    pub fn pin_above(&mut self, height_fraction: f64) -> usize {
+        let low = self.bounding_box_min().y;
+        let high = self.bounding_box_max().y;
+        let threshold = low + height_fraction * (high - low);
+
+        let mut count = 0;
+        for i in 0..self.node_count() {
+            if self.rest_positions[i].y >= threshold {
+                self.pinned[i] = true;
+                count += 1;
+            }
+        }
+        count
+    }
+
+    pub fn pin_below(&mut self, height_fraction: f64) -> usize {
+        let low = self.bounding_box_min().y;
+        let high = self.bounding_box_max().y;
+        let threshold = low + height_fraction * (high - low);
+
+        let mut count = 0;
+        for i in 0..self.node_count() {
+            if self.rest_positions[i].y <= threshold {
+                self.pinned[i] = true;
+                count += 1;
+            }
+        }
+        count
+    }
+
     pub fn elements(&self) -> &[TetElement] {
         &self.elements
     }
@@ -280,6 +339,20 @@ impl TetMesh {
 
     pub fn tets(&self) -> &[Tet] {
         &self.tets
+    }
+
+    pub fn pins(&self) -> Vec<Vector3<f64>> {
+        self.rest_positions
+            .iter()
+            .enumerate()
+            .filter_map(|(i, pos)| {
+                if self.pinned[i] {
+                    Some(pos.clone())
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 
     pub fn node_count(&self) -> usize {

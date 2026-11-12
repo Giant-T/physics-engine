@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 mod app;
 mod input_state;
 mod physics;

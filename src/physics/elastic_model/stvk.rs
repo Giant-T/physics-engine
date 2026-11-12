@@ -1,25 +1,27 @@
 use nalgebra::Matrix3;
 
-use super::elastic_model::LameParameters;
+use super::LameParameters;
 
-type Tensor = Matrix3<f64>;
-
-fn green_strain(F: &Tensor) -> Tensor {
-    0.5 * (F.transpose() * F - Tensor::identity())
+fn green_strain(F: &Matrix3<f64>) -> Matrix3<f64> {
+    0.5 * (F.transpose() * F - Matrix3::identity())
 }
 
-pub fn energy_density(F: &Tensor, lame: &LameParameters) -> f64 {
+pub fn energy_density(F: &Matrix3<f64>, lame: &LameParameters) -> f64 {
     let E = green_strain(F);
 
-    let trace = E.trace();
+    let lhs = lame.mu * E.norm_squared();
+    let rhs = 0.5 * lame.lambda * E.trace().powi(2);
 
-    lame.mu * E.norm_squared() + 0.5 * lame.lambda * trace.powi(2)
+    lhs + rhs
 }
 
 fn second_piola_kirchhoff(F: &Matrix3<f64>, lame: &LameParameters) -> Matrix3<f64> {
     let E = green_strain(F);
 
-    2.0 * lame.mu * E + lame.lambda * E.trace() * Matrix3::identity()
+    let lhs = 2.0 * lame.mu * E;
+    let rhs = lame.lambda * E.trace() * Matrix3::identity();
+
+    lhs + rhs
 }
 
 pub fn first_piola_kirchhoff(F: &Matrix3<f64>, lame: &LameParameters) -> Matrix3<f64> {

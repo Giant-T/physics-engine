@@ -9,6 +9,7 @@ use camera::Camera;
 mod camera;
 mod light;
 mod mesh;
+mod pin;
 mod pipeline;
 mod texture;
 mod transform;
@@ -20,6 +21,7 @@ use texture::Texture;
 
 pub use camera::CameraController;
 pub use mesh::MeshRenderer;
+pub use pin::PinsRenderer;
 pub use transform::Transform;
 
 pub trait Renderable {

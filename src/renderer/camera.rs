@@ -21,6 +21,8 @@ pub struct Camera {
 
     view_proj_buffer: wgpu::Buffer,
     position_buffer: wgpu::Buffer,
+    up_buffer: wgpu::Buffer,
+    right_buffer: wgpu::Buffer,
     bind_group_layout: wgpu::BindGroupLayout,
     bind_group: wgpu::BindGroup,
 }
@@ -54,6 +56,20 @@ impl Camera {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
+        let up: [f32; 3] = transform.up().into();
+        let up_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Camera Up Buffer"),
+            contents: bytemuck::cast_slice(&[up]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let right: [f32; 3] = transform.right().into();
+        let right_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Camera Right Buffer"),
+            contents: bytemuck::cast_slice(&[right]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[
                 wgpu::BindGroupLayoutEntry {
@@ -76,6 +92,26 @@ impl Camera {
                     },
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
             label: Some("camera_bind_group_layout"),
         });
@@ -89,6 +125,14 @@ impl Camera {
                 wgpu::BindGroupEntry {
                     binding: 1,
                     resource: position_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: up_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: right_buffer.as_entire_binding(),
                 },
             ],
             label: Some("camera_bind_group"),
@@ -106,6 +150,8 @@ impl Camera {
 
             view_proj_buffer,
             position_buffer,
+            up_buffer,
+            right_buffer,
             bind_group_layout,
             bind_group,
         }
@@ -130,6 +176,11 @@ impl Camera {
         queue.write_buffer(&self.view_proj_buffer, 0, bytemuck::cast_slice(&[matrix]));
         let position: [f32; 3] = self.transform.position().into();
         queue.write_buffer(&self.position_buffer, 0, bytemuck::cast_slice(&[position]));
+
+        let up: [f32; 3] = self.transform.up().into();
+        queue.write_buffer(&self.up_buffer, 0, bytemuck::cast_slice(&[up]));
+        let right: [f32; 3] = self.transform.right().into();
+        queue.write_buffer(&self.right_buffer, 0, bytemuck::cast_slice(&[right]));
     }
 
     pub fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {

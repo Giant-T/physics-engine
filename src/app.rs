@@ -3,16 +3,18 @@ use std::{sync::Arc, time::Instant};
 use nalgebra::Vector2;
 use winit::{
     application::ApplicationHandler,
-    event::{DeviceEvent, KeyEvent, MouseButton, WindowEvent},
+    event::{DeviceEvent, ElementState, KeyEvent, MouseButton, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop},
     keyboard::{KeyCode, PhysicalKey},
     window::Window,
 };
 
+use crate::scenes::ElasticMeshType;
+
 use super::{
     input_state::InputState,
     renderer::{CameraController, Renderer},
-    scenes::{Scene, SceneDescriptor},
+    scenes::{Anchoring, Scene, SceneDescriptor},
 };
 
 pub struct State {
@@ -33,10 +35,19 @@ impl State {
         let renderer = Renderer::new(window.clone()).await?;
         let camera_controller = CameraController::new(10.0, 0.005);
         let scene = Scene::build_scene(
+            // SceneDescriptor {
+            //     name: "Test",
+            //     description: "Petite scene de test",
+            //     mesh_type: ElasticMeshType::File("bunny_coarser.mesh"),
+            //     time_step: 0.05,
+            //     anchoring: Anchoring::Bottom(0.06),
+            // },
             SceneDescriptor {
-                name: "Test",
-                mesh_path: "bunny_coarser.mesh",
-                time_step: 0.2,
+                name: "Test Poutre",
+                description: "Poutre encastree a gauche",
+                mesh_type: ElasticMeshType::Box(12, 3, 3, 0.08),
+                time_step: 0.05,
+                anchoring: Anchoring::LeftFace(1e-9),
             },
             &renderer,
         );
@@ -59,9 +70,17 @@ impl State {
         self.renderer.resize(width, height);
     }
 
-    fn handle_key(&mut self, event_loop: &ActiveEventLoop, code: KeyCode, is_pressed: bool) {
+    fn handle_key(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        code: KeyCode,
+        is_pressed: bool,
+        is_released: bool,
+    ) {
         if code == KeyCode::Escape && is_pressed {
             event_loop.exit();
+        } else if code == KeyCode::KeyF && is_released {
+            self.toggle_cursor();
         } else {
             self.input_state.update_keys(code, is_pressed);
         }
@@ -187,7 +206,12 @@ impl ApplicationHandler<State> for App {
                         ..
                     },
                 ..
-            } => state.handle_key(event_loop, code, key_state.is_pressed()),
+            } => state.handle_key(
+                event_loop,
+                code,
+                key_state.is_pressed(),
+                key_state == ElementState::Released,
+            ),
             _ => {}
         }
     }

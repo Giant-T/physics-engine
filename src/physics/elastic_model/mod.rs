@@ -3,7 +3,14 @@ use std::ops::{AddAssign, SubAssign};
 use nalgebra::{DVector, Matrix3, RowVector3, SMatrix, SVector, Vector3};
 use nalgebra_sparse::{CooMatrix, CsrMatrix};
 
-use super::{GRAVITY, stvk, tet_mesh::TetMesh};
+use crate::renderer::UIElement;
+
+use super::{GRAVITY, tet_mesh::TetMesh};
+use model_type::ElasticModelType;
+
+mod corotational;
+pub mod model_type;
+mod stvk;
 
 pub struct LameParameters {
     pub mu: f64,
@@ -34,10 +41,16 @@ pub struct ElasticModel {
     rayleigh_alpha: f64,
     rayleigh_beta: f64,
     damping: CsrMatrix<f64>,
+    model_type: ElasticModelType,
 }
 
 impl ElasticModel {
-    pub fn new(mesh: TetMesh, lame: LameParameters, density: f64) -> Self {
+    pub fn new(
+        mesh: TetMesh,
+        lame: LameParameters,
+        density: f64,
+        model_type: ElasticModelType,
+    ) -> Self {
         log::info!("ElasticModel::new");
 
         let (lumped_masses, total_mass) = Self::build_masses(&mesh, density);
@@ -49,7 +62,7 @@ impl ElasticModel {
             rest_positions.len() * 3,
             rest_positions.iter().flat_map(|v| v.iter().copied()),
         );
-        let stiffness = Self::compute_stiffness(&mesh, &lame, &x);
+        let stiffness = Self::compute_stiffness(&model_type, &mesh, &lame, &x);
         let damping =
             Self::initialize_damping(&lumped_masses, &stiffness, rayleigh_alpha, rayleigh_beta);
 
@@ -61,6 +74,7 @@ impl ElasticModel {
             damping,
             rayleigh_alpha,
             rayleigh_beta,
+            model_type,
         }
     }
 
@@ -99,7 +113,7 @@ impl ElasticModel {
                 &x.fixed_rows::<3>(3 * tet[3]).into(),
             );
 
-            energy += el.rest_volume() * stvk::energy_density(&F, &self.lame);
+            energy += el.rest_volume() * self.model_type.energy_density(&F, &self.lame);
         }
 
         energy
@@ -145,7 +159,7 @@ impl ElasticModel {
         let p3 = x.fixed_rows::<3>(3 * tet[3]);
 
         let F = element.deformation_gradient(&p0.into(), &p1.into(), &p2.into(), &p3.into());
-        let P = stvk::first_piola_kirchhoff(&F, &self.lame);
+        let P = self.model_type.compute_P(&F, &self.lame);
 
         let H = -element.rest_volume() * P * element.rest_inverse().transpose();
 
@@ -199,10 +213,11 @@ impl ElasticModel {
         element_idx: usize,
         x: &DVector<f64>,
     ) -> SMatrix<f64, 12, 12> {
-        Self::element_stiffness(&self.mesh(), &self.lame, element_idx, x)
+        Self::element_stiffness(&self.model_type, &self.mesh(), &self.lame, element_idx, x)
     }
 
     fn element_stiffness(
+        model_type: &ElasticModelType,
         mesh: &TetMesh,
         lame: &LameParameters,
         element_idx: usize,
@@ -234,7 +249,7 @@ impl ElasticModel {
                 }
 
                 let delta_F = delta_shape * rest_inverse;
-                let delta_P = stvk::delta_first_piola_kirchhoff(&F, &delta_F, lame);
+                let delta_P = model_type.compute_delta_P(&F, &delta_F, lame);
                 let delta_H = -volume * delta_P * rest_inverse.transpose();
 
                 let mut force_differential = SVector::<f64, 12>::zeros();
@@ -256,6 +271,7 @@ impl ElasticModel {
     }
 
     fn compute_stiffness(
+        model_type: &ElasticModelType,
         mesh: &TetMesh,
         lame: &LameParameters,
         x: &DVector<f64>,
@@ -264,7 +280,7 @@ impl ElasticModel {
 
         for e in 0..mesh.tet_count() {
             let tet = &mesh.tets()[e];
-            let local = Self::element_stiffness(mesh, lame, e, &x);
+            let local = Self::element_stiffness(model_type, mesh, lame, e, &x);
 
             for a in 0..tet.len() {
                 for b in 0..tet.len() {
@@ -282,7 +298,7 @@ impl ElasticModel {
     }
 
     pub fn stiffness_matrix(&self, x: &DVector<f64>) -> CsrMatrix<f64> {
-        Self::compute_stiffness(&self.mesh, &self.lame, x)
+        Self::compute_stiffness(&self.model_type, &self.mesh, &self.lame, x)
     }
 
     fn initialize_damping(
@@ -334,5 +350,28 @@ impl ElasticModel {
 
     pub fn mesh(&self) -> &TetMesh {
         &self.mesh
+    }
+
+    pub fn mesh_mut(&mut self) -> &mut TetMesh {
+        &mut self.mesh
+    }
+}
+
+impl UIElement for ElasticModel {
+    fn ui(&mut self, ui: &mut egui::Ui) {
+        egui::ComboBox::from_label("Type du modèle élastique")
+            .selected_text(format!("{:?}", self.model_type))
+            .show_ui(ui, |ui| {
+                ui.selectable_value(
+                    &mut self.model_type,
+                    ElasticModelType::StVK,
+                    format!("{:?}", ElasticModelType::StVK),
+                );
+                ui.selectable_value(
+                    &mut self.model_type,
+                    ElasticModelType::Corotationnal,
+                    format!("{:?}", ElasticModelType::Corotationnal),
+                );
+            });
     }
 }
