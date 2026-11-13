@@ -119,7 +119,7 @@ impl ElasticModel {
         energy
     }
 
-    fn potential_energy(&self, x: &DVector<f64>) -> f64 {
+    pub fn potential_energy(&self, x: &DVector<f64>) -> f64 {
         let mut energy = self.elastic_energy(x);
 
         for i in 0..self.mesh.node_count() {

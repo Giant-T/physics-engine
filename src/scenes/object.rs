@@ -83,6 +83,14 @@ impl SceneObject {
             },
         );
 
+        {
+            let model = model.lock().unwrap();
+            log::info!(
+                "Energie potentielle initiale: {}",
+                model.potential_energy(&solver.x)
+            );
+        }
+
         Self {
             name: mesh_type.name(),
             model,
@@ -113,6 +121,7 @@ impl SceneObject {
 impl UIElement for SceneObject {
     fn ui(&mut self, ui: &mut egui::Ui) {
         self.model.lock().unwrap().ui(ui);
+        self.solver.ui(ui);
     }
 }
 

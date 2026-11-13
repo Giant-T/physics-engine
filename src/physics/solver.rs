@@ -1,7 +1,9 @@
-use std::{rc::Rc, sync::Mutex, time::Instant};
+use std::{ops::AddAssign, rc::Rc, sync::Mutex};
 
 use nalgebra::{DVector, Vector3};
 use nalgebra_sparse::{CooMatrix, CsrMatrix};
+
+use crate::renderer::UIElement;
 
 use super::{elastic_model::ElasticModel, linalg::ConjugateGradient, tet_mesh::TetMesh};
 
@@ -25,8 +27,8 @@ pub struct ImplicitSolver {
     model: Rc<Mutex<ElasticModel>>,
     time_step: f64,
     conjugate_gradient: ConjugateGradient,
-    x: DVector<f64>,
-    v: DVector<f64>,
+    pub x: DVector<f64>,
+    pub v: DVector<f64>,
     delta_v: DVector<f64>,
 }
 
@@ -96,13 +98,7 @@ impl ImplicitSolver {
             &mut rhs,
         );
 
-        let now = Instant::now();
         self.delta_v = self.solve(&system_matrix, &rhs);
-        let elapsed = now.elapsed();
-        log::info!(
-            "elapsed CG: {elapsed:?} {} iterations",
-            self.conjugate_gradient.iterations(),
-        );
 
         self.v += &self.delta_v;
         self.x += h * &self.v;
@@ -161,5 +157,23 @@ impl ImplicitSolver {
             .collect();
 
         current_positions
+    }
+
+    fn impulse(&mut self) {
+        let model = self.model.lock().unwrap();
+        let impulse = Vector3::new(1.5, 0.0, 0.4);
+        for idx in 0..model.mesh().node_count() {
+            if !model.mesh().is_pinned(idx) {
+                self.v.fixed_rows_mut::<3>(3 * idx).add_assign(&impulse);
+            }
+        }
+    }
+}
+
+impl UIElement for ImplicitSolver {
+    fn ui(&mut self, ui: &mut egui::Ui) {
+        if ui.button("Impulsion").clicked() {
+            self.impulse();
+        }
     }
 }

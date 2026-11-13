@@ -8,6 +8,7 @@ pub struct ConjugateGradient {
     residual: f64,
 }
 
+// Ecrire aider par IA pour essayer d'optimiser mon code
 impl ConjugateGradient {
     pub fn new(max_iterations: usize, tolerance: f64) -> Self {
         log::info!("ConjugateGradient::new");
@@ -32,7 +33,6 @@ impl ConjugateGradient {
         self.residual = 0.0;
         let rhs_norm = rhs.norm();
 
-        // norm(rhs) = 0
         if rhs_norm <= f64::EPSILON {
             return DVector::zeros(rhs.nrows());
         }
