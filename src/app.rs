@@ -3,6 +3,7 @@ use std::{sync::Arc, time::Instant};
 use nalgebra::Vector2;
 use winit::{
     application::ApplicationHandler,
+    dpi::PhysicalPosition,
     event::{DeviceEvent, ElementState, KeyEvent, MouseButton, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop},
     keyboard::{KeyCode, PhysicalKey},
@@ -27,6 +28,7 @@ pub struct State {
     scene: Scene,
 
     cursor_locked: bool,
+    cursor_position: Vector2<f64>,
     last_frame_time: Instant,
 }
 
@@ -34,14 +36,8 @@ impl State {
     pub async fn new(window: Arc<Window>) -> anyhow::Result<Self> {
         let renderer = Renderer::new(window.clone()).await?;
         let camera_controller = CameraController::new(10.0, 0.005);
+        // TODO: Ajouter un selecteur de scene
         let scene = Scene::build_scene(
-            // SceneDescriptor {
-            //     name: "Test",
-            //     description: "Petite scene de test",
-            //     mesh_type: ElasticMeshType::File("bunny_coarser.mesh"),
-            //     time_step: 0.05,
-            //     anchoring: Anchoring::Bottom(0.06),
-            // },
             SceneDescriptor {
                 name: "Test Poutre",
                 description: "Poutre encastree a gauche",
@@ -63,6 +59,7 @@ impl State {
 
             last_frame_time: Instant::now(),
             cursor_locked: false,
+            cursor_position: Default::default(),
         })
     }
 
@@ -110,6 +107,18 @@ impl State {
         if button == MouseButton::Middle && is_pressed {
             self.toggle_cursor();
         }
+        if self.cursor_locked {
+            return;
+        }
+        if button == MouseButton::Left && is_pressed {
+            self.scene.select_from_ray(
+                &self
+                    .renderer
+                    .camera()
+                    .ray_from_cursor_pos(&self.cursor_position),
+                &self.renderer,
+            );
+        }
     }
 
     fn update(&mut self, delta_time: f64) {
@@ -135,6 +144,13 @@ impl State {
     fn handle_mouse_move(&mut self, mouse_delta: (f64, f64)) {
         let mouse_delta = Vector2::new(mouse_delta.0 as f32, mouse_delta.1 as f32);
         self.input_state.handle_mouse_move(mouse_delta);
+    }
+
+    fn set_cursor_position(&mut self, position: PhysicalPosition<f64>) {
+        let size = self.window.inner_size();
+        let x = (2.0 * position.x) / size.width as f64 - 1.0;
+        let y = 1.0 - (2.0 * position.y) / size.height as f64;
+        self.cursor_position = Vector2::new(x, y);
     }
 }
 
@@ -190,6 +206,9 @@ impl ApplicationHandler<State> for App {
                         event_loop.exit();
                     }
                 }
+            }
+            WindowEvent::CursorMoved { position, .. } => {
+                state.set_cursor_position(position);
             }
             WindowEvent::MouseInput {
                 state: mouse_state,

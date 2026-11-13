@@ -1,13 +1,18 @@
 use std::{rc::Rc, sync::Mutex};
 
+use nalgebra::{Point3, Vector3};
+
 use crate::{
     physics::{
         elastic_model::{ElasticModel, LameParameters, model_type::ElasticModelType},
         solver::{ImplicitSolver, SolverOptions},
         tet_mesh::TetMesh,
     },
-    renderer::{MeshRenderer, PinsRenderer, Renderable, Renderer, UIElement},
+    ray::{Ray, RayDistance},
+    renderer::{MeshRenderer, PointsRenderer, Renderable, Renderer, UIElement},
 };
+
+const POINT_SELECTION_MIN_DIST: f64 = 0.1;
 
 pub enum Anchoring {
     LeftFace(f64),
@@ -35,8 +40,10 @@ pub struct SceneObject {
     name: String,
     model: Rc<Mutex<ElasticModel>>,
     solver: ImplicitSolver,
+    selected_point: Option<Vector3<f64>>,
     mesh_renderer: MeshRenderer,
-    pins_renderer: PinsRenderer,
+    pins_renderer: PointsRenderer,
+    selected_point_renderer: PointsRenderer,
 }
 
 impl SceneObject {
@@ -66,7 +73,8 @@ impl SceneObject {
         }
 
         let mesh_renderer = MeshRenderer::from_tet_mesh(&tet_mesh, renderer);
-        let pins_renderer = PinsRenderer::from_pins(&tet_mesh.pins(), renderer);
+        let pins_renderer = PointsRenderer::from_points(&tet_mesh.pins(), renderer);
+        let selected_point_renderer = PointsRenderer::from_points(&[], renderer);
 
         let model = Rc::new(Mutex::new(ElasticModel::new(
             tet_mesh,
@@ -95,8 +103,10 @@ impl SceneObject {
             name: mesh_type.name(),
             model,
             solver,
+            selected_point: None,
             mesh_renderer,
             pins_renderer,
+            selected_point_renderer,
         }
     }
 
@@ -106,6 +116,7 @@ impl SceneObject {
 
     pub fn reset(&mut self) {
         self.solver.reset();
+        self.selected_point = None;
     }
 
     pub fn update_mesh(&mut self, renderer: &Renderer) {
@@ -115,6 +126,36 @@ impl SceneObject {
 
     pub fn model_mut(&mut self) -> &mut Rc<Mutex<ElasticModel>> {
         &mut self.model
+    }
+
+    pub fn select_from_ray(&mut self, ray: &Ray, renderer: &Renderer) {
+        let model = self.model.lock().unwrap();
+        let mut closest = None;
+        let mut closest_dist: Option<RayDistance> = None;
+
+        for idx in 0..model.mesh().node_count() {
+            let vector = Vector3::from(self.solver.x.fixed_rows::<3>(3 * idx));
+            if let Some(dist) = ray.dist_with_point(&Point3::from(vector)) {
+                if dist.distance > POINT_SELECTION_MIN_DIST {
+                    continue;
+                }
+
+                log::info!("dist: {dist:?}");
+
+                if closest_dist.is_none() || dist.distance < closest_dist.clone().unwrap().distance
+                {
+                    closest_dist = Some(dist);
+                    closest = Some(vector);
+                }
+            }
+        }
+
+        self.selected_point = closest;
+        if let Some(point) = closest {
+            self.selected_point_renderer.set_points(&[point], renderer);
+        } else {
+            self.selected_point_renderer.set_points(&[], renderer);
+        }
     }
 }
 
@@ -129,5 +170,9 @@ impl Renderable for SceneObject {
     fn render(&self, renderer: &Renderer, render_pass: &mut wgpu::RenderPass) {
         self.mesh_renderer.render(renderer, render_pass);
         self.pins_renderer.render(renderer, render_pass);
+
+        if self.selected_point.is_some() {
+            self.selected_point_renderer.render(renderer, render_pass);
+        }
     }
 }

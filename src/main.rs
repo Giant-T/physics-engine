@@ -2,6 +2,7 @@
 mod app;
 mod input_state;
 mod physics;
+mod ray;
 mod renderer;
 mod scenes;
 

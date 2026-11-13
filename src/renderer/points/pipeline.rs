@@ -1,12 +1,12 @@
 use crate::renderer::texture::Texture;
 
-use super::{super::Renderer, PinInstance};
+use super::{super::Renderer, PointInstance};
 
-pub struct PinRenderPipeline {
+pub struct PointRenderPipeline {
     pipeline: wgpu::RenderPipeline,
 }
 
-impl PinRenderPipeline {
+impl PointRenderPipeline {
     pub fn new(renderer: &Renderer) -> Self {
         let bind_group_layouts = &[Some(renderer.camera.bind_group_layout())];
 
@@ -26,12 +26,12 @@ impl PinRenderPipeline {
         let pipeline = renderer
             .device
             .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("Pin Render Pipeline"),
+                label: Some("Point Render Pipeline"),
                 layout: Some(&pipeline_layout),
                 vertex: wgpu::VertexState {
                     module: &shader,
                     entry_point: Some("vs_main"),
-                    buffers: &[Some(PinInstance::desc())],
+                    buffers: &[Some(PointInstance::desc())],
                     compilation_options: Default::default(),
                 },
                 fragment: Some(wgpu::FragmentState {
@@ -56,7 +56,7 @@ impl PinRenderPipeline {
                 depth_stencil: Some(wgpu::DepthStencilState {
                     format: Texture::DEPTH_FORMAT,
                     depth_write_enabled: Some(false),
-                    depth_compare: Some(wgpu::CompareFunction::LessEqual),
+                    depth_compare: Some(wgpu::CompareFunction::Always),
                     stencil: Default::default(),
                     bias: Default::default(),
                 }),

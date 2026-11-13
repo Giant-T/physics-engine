@@ -1,4 +1,7 @@
-use crate::renderer::{Renderable, Renderer, UIElement};
+use crate::{
+    ray::Ray,
+    renderer::{Renderable, Renderer, UIElement},
+};
 use object::SceneObject;
 
 pub use object::{Anchoring, ElasticMeshType};
@@ -53,6 +56,10 @@ impl Scene {
         }
 
         self.object.update_mesh(renderer);
+    }
+
+    pub fn select_from_ray(&mut self, ray: &Ray, renderer: &Renderer) {
+        self.object.select_from_ray(ray, renderer);
     }
 }
 

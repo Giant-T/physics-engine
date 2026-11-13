@@ -1,13 +1,21 @@
-use std::f32::consts::PI;
+use std::{f32::consts::PI, ops::Mul};
 
-use nalgebra::{Matrix4, Perspective3, Point3, Vector3};
+use nalgebra::{Matrix4, Perspective3, Point3, Vector2, Vector3, Vector4};
 use wgpu::util::DeviceExt;
 
-use crate::input_state::InputState;
+use crate::{input_state::InputState, ray::Ray};
 
 use super::Transform;
 
 const PITCH_LIMIT: f32 = PI / 2.0 - 0.001;
+
+#[rustfmt::skip]
+pub const OPENGL_TO_WGPU_MATRIX: Matrix4<f32> = Matrix4::new(
+    1.0, 0.0, 0.0, 0.0,
+    0.0, 1.0, 0.0, 0.0,
+    0.0, 0.0, 0.5, 0.5,
+    0.0, 0.0, 0.0, 1.0,
+);
 
 pub struct Camera {
     transform: Transform,
@@ -164,7 +172,9 @@ impl Camera {
     fn build_matrix(&self) -> Matrix4<f32> {
         let view = self.transform.matrix().try_inverse().unwrap();
 
-        Self::proj_matrix(self.aspect, self.fovy, self.znear, self.zfar) * view
+        OPENGL_TO_WGPU_MATRIX
+            * Self::proj_matrix(self.aspect, self.fovy, self.znear, self.zfar)
+            * view
     }
 
     pub fn set_aspect(&mut self, aspect: f32) {
@@ -206,6 +216,17 @@ impl Camera {
 
         self.transform
             .update_rotation_from_pitch_yaw(self.pitch, self.yaw);
+    }
+
+    pub fn ray_from_cursor_pos(&self, cursor_position: &Vector2<f64>) -> Ray {
+        let homogeneous_vector = Vector4::new(cursor_position.x, cursor_position.y, 0.0, 1.0);
+
+        let inverse_view_proj = self.build_matrix().map(|x| x as f64).try_inverse().unwrap();
+        let origin = Point3::from_homogeneous(inverse_view_proj * homogeneous_vector).unwrap();
+
+        let direction = origin - self.transform.position().map(|x| x as f64);
+
+        Ray::new(origin, direction)
     }
 }
 

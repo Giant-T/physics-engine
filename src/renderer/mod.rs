@@ -9,8 +9,8 @@ use camera::Camera;
 mod camera;
 mod light;
 mod mesh;
-mod pin;
 mod pipeline;
+mod points;
 mod texture;
 mod transform;
 mod vertex;
@@ -21,7 +21,7 @@ use texture::Texture;
 
 pub use camera::CameraController;
 pub use mesh::MeshRenderer;
-pub use pin::PinsRenderer;
+pub use points::PointsRenderer;
 pub use transform::Transform;
 
 pub trait Renderable {
@@ -334,6 +334,10 @@ impl Renderer {
 
     pub fn update(&mut self) {
         self.camera.update_uniforms(&self.queue);
+    }
+
+    pub fn camera(&self) -> &Camera {
+        &self.camera
     }
 
     pub fn camera_mut(&mut self) -> &mut Camera {
