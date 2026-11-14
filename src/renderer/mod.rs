@@ -29,7 +29,7 @@ pub trait Renderable {
 }
 
 pub trait UIElement {
-    fn ui(&mut self, ui: &mut egui::Ui);
+    fn ui(&mut self, ui: &mut egui::Ui, renderer: &Renderer);
 }
 
 pub struct Renderer {
@@ -270,7 +270,7 @@ impl Renderer {
             ui.label(format!("{delta_time:.6} delta time"));
             ui.label(format!("{fps:.0} fps"));
 
-            scene.ui(ui);
+            scene.ui(ui, &self);
         });
 
         let clipped_primitives = self
@@ -342,5 +342,9 @@ impl Renderer {
 
     pub fn camera_mut(&mut self) -> &mut Camera {
         &mut self.camera
+    }
+
+    pub fn ui_ctx(&self) -> &egui::Context {
+        &self.ui_ctx
     }
 }

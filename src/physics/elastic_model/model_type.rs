@@ -1,11 +1,14 @@
 use nalgebra::Matrix3;
 
+use crate::physics::elastic_model::neo_hookean;
+
 use super::{LameParameters, corotational, stvk};
 
 #[derive(Debug, PartialEq)]
 pub enum ElasticModelType {
     StVK,
     Corotationnal,
+    NeoHookean,
 }
 
 impl ElasticModelType {
@@ -13,6 +16,7 @@ impl ElasticModelType {
         match self {
             Self::StVK => stvk::energy_density(F, lame),
             Self::Corotationnal => corotational::energy_density(F, lame),
+            Self::NeoHookean => neo_hookean::energy_density(F, lame),
         }
     }
 
@@ -20,6 +24,7 @@ impl ElasticModelType {
         match self {
             Self::StVK => stvk::first_piola_kirchhoff(F, lame),
             Self::Corotationnal => corotational::compute_P(F, lame),
+            Self::NeoHookean => neo_hookean::compute_P(F, lame),
         }
     }
 
@@ -32,6 +37,7 @@ impl ElasticModelType {
         match self {
             Self::StVK => stvk::delta_first_piola_kirchhoff(F, delta_F, lame),
             Self::Corotationnal => corotational::compute_delta_P(F, delta_F, lame),
+            Self::NeoHookean => neo_hookean::compute_delta_P(F, delta_F, lame),
         }
     }
 }

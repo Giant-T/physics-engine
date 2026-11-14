@@ -1,4 +1,4 @@
-use std::{f32::consts::PI, ops::Mul};
+use std::f32::consts::PI;
 
 use nalgebra::{Matrix4, Perspective3, Point3, Vector2, Vector3, Vector4};
 use wgpu::util::DeviceExt;

@@ -20,6 +20,7 @@ pub struct Scene {
     object: SceneObject,
     accumulator: f64,
     time: f64,
+    stopped: bool,
 }
 
 impl Scene {
@@ -36,17 +37,30 @@ impl Scene {
             object,
             time: 0.0,
             accumulator: 0.0,
+            stopped: true,
         }
     }
 
-    fn reset(&mut self) {
+    fn play(&mut self) {
+        self.stopped = false;
+    }
+
+    fn pause(&mut self) {
+        self.stopped = true;
+    }
+
+    fn reset(&mut self, renderer: &Renderer) {
         self.accumulator = 0.0;
         self.time = 0.0;
 
-        self.object.reset();
+        self.object.reset(renderer);
     }
 
     pub fn update(&mut self, renderer: &Renderer, delta_time: f64) {
+        if self.stopped {
+            return;
+        }
+
         self.accumulator += delta_time;
 
         while self.accumulator >= self.descriptor.time_step {
@@ -70,14 +84,26 @@ impl Renderable for Scene {
 }
 
 impl UIElement for Scene {
-    fn ui(&mut self, ui: &mut egui::Ui) {
+    fn ui(&mut self, ui: &mut egui::Ui, renderer: &Renderer) {
         egui::Window::new(format!("Scene: {}", self.descriptor.name)).show(ui, |ui| {
             ui.label(self.descriptor.description);
             ui.label(format!("time: {:.2}s", self.time));
-            if ui.button("Reset").clicked() {
-                self.reset();
-            }
-            self.object.ui(ui);
+
+            ui.columns(3, |columns| {
+                if columns[0].button("play").clicked() {
+                    self.play();
+                }
+
+                if columns[1].button("pause").clicked() {
+                    self.pause();
+                }
+
+                if columns[2].button("Reset").clicked() {
+                    self.reset(renderer);
+                }
+            });
+
+            self.object.ui(ui, renderer);
         });
     }
 }

@@ -1,6 +1,6 @@
 use nalgebra::{Matrix4, Point3, Unit, UnitQuaternion, Vector3};
 
-use crate::renderer::UIElement;
+use crate::renderer::{Renderer, UIElement};
 
 pub struct Transform {
     translation: Vector3<f32>,
@@ -106,7 +106,7 @@ impl Transform {
 }
 
 impl UIElement for Transform {
-    fn ui(&mut self, ui: &mut egui::Ui) {
+    fn ui(&mut self, ui: &mut egui::Ui, _: &Renderer) {
         ui.columns(2, |columns| {
             columns[0].label("Position:");
             columns[1].columns(3, |columns| {

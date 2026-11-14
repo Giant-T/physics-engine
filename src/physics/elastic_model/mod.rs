@@ -3,13 +3,14 @@ use std::ops::{AddAssign, SubAssign};
 use nalgebra::{DVector, Matrix3, RowVector3, SMatrix, SVector, Vector3};
 use nalgebra_sparse::{CooMatrix, CsrMatrix};
 
-use crate::renderer::UIElement;
+use crate::renderer::{Renderer, UIElement};
 
 use super::{GRAVITY, tet_mesh::TetMesh};
 use model_type::ElasticModelType;
 
 mod corotational;
 pub mod model_type;
+mod neo_hookean;
 mod stvk;
 
 pub struct LameParameters {
@@ -278,9 +279,9 @@ impl ElasticModel {
     ) -> CsrMatrix<f64> {
         let mut matrix = CooMatrix::<f64>::new(mesh.dof_count(), mesh.dof_count());
 
-        for e in 0..mesh.tet_count() {
-            let tet = &mesh.tets()[e];
-            let local = Self::element_stiffness(model_type, mesh, lame, e, &x);
+        for element_idx in 0..mesh.tet_count() {
+            let tet = &mesh.tets()[element_idx];
+            let local = Self::element_stiffness(model_type, mesh, lame, element_idx, &x);
 
             for a in 0..tet.len() {
                 for b in 0..tet.len() {
@@ -336,6 +337,26 @@ impl ElasticModel {
         &self.damping
     }
 
+    pub fn minimum_determinant(&self, x: &DVector<f64>) -> f64 {
+        let mut minimum = f64::MAX;
+
+        for element_idx in 0..self.mesh.tet_count() {
+            let tet = &self.mesh.tets()[element_idx];
+            let element = &self.mesh.elements()[element_idx];
+
+            let F = element.deformation_gradient(
+                &x.fixed_rows::<3>(3 * tet[0]).into(),
+                &x.fixed_rows::<3>(3 * tet[1]).into(),
+                &x.fixed_rows::<3>(3 * tet[2]).into(),
+                &x.fixed_rows::<3>(3 * tet[3]).into(),
+            );
+
+            minimum = minimum.min(F.determinant());
+        }
+
+        minimum
+    }
+
     pub fn rayleigh_alpha(&self) -> f64 {
         self.rayleigh_alpha
     }
@@ -358,7 +379,7 @@ impl ElasticModel {
 }
 
 impl UIElement for ElasticModel {
-    fn ui(&mut self, ui: &mut egui::Ui) {
+    fn ui(&mut self, ui: &mut egui::Ui, _: &Renderer) {
         egui::ComboBox::from_label("Type du modèle élastique")
             .selected_text(format!("{:?}", self.model_type))
             .show_ui(ui, |ui| {
@@ -372,6 +393,29 @@ impl UIElement for ElasticModel {
                     ElasticModelType::Corotationnal,
                     format!("{:?}", ElasticModelType::Corotationnal),
                 );
+                ui.selectable_value(
+                    &mut self.model_type,
+                    ElasticModelType::NeoHookean,
+                    format!("{:?}", ElasticModelType::NeoHookean),
+                );
             });
+
+        ui.columns(2, |columns| {
+            columns[0].label("Rayleigh Alpha:");
+            columns[1].add(
+                egui::DragValue::new(&mut self.rayleigh_alpha)
+                    .speed(0.01)
+                    .range(0..=5),
+            );
+        });
+
+        ui.columns(2, |columns| {
+            columns[0].label("Rayleigh Beta:");
+            columns[1].add(
+                egui::DragValue::new(&mut self.rayleigh_beta)
+                    .speed(0.01)
+                    .range(0..=5),
+            );
+        });
     }
 }

@@ -3,7 +3,7 @@ use std::{ops::AddAssign, rc::Rc, sync::Mutex};
 use nalgebra::{DVector, Vector3};
 use nalgebra_sparse::{CooMatrix, CsrMatrix};
 
-use crate::renderer::UIElement;
+use crate::renderer::{Renderer, UIElement};
 
 use super::{elastic_model::ElasticModel, linalg::ConjugateGradient, tet_mesh::TetMesh};
 
@@ -159,21 +159,24 @@ impl ImplicitSolver {
         current_positions
     }
 
-    fn impulse(&mut self) {
+    pub fn pins(&self) -> Vec<Vector3<f64>> {
         let model = self.model.lock().unwrap();
-        let impulse = Vector3::new(1.5, 0.0, 0.4);
-        for idx in 0..model.mesh().node_count() {
-            if !model.mesh().is_pinned(idx) {
-                self.v.fixed_rows_mut::<3>(3 * idx).add_assign(&impulse);
-            }
-        }
+        let mesh = model.mesh();
+        self.x
+            .as_slice()
+            .chunks_exact(3)
+            .enumerate()
+            .filter_map(|(i, v)| {
+                if mesh.is_pinned(i) {
+                    Some(Vector3::new(v[0], v[1], v[2]))
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
-}
 
-impl UIElement for ImplicitSolver {
-    fn ui(&mut self, ui: &mut egui::Ui) {
-        if ui.button("Impulsion").clicked() {
-            self.impulse();
-        }
+    pub fn reset_v(&mut self) {
+        self.v.fill(0.0);
     }
 }

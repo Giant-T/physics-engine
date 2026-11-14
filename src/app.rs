@@ -36,14 +36,15 @@ impl State {
     pub async fn new(window: Arc<Window>) -> anyhow::Result<Self> {
         let renderer = Renderer::new(window.clone()).await?;
         let camera_controller = CameraController::new(10.0, 0.005);
+
         // TODO: Ajouter un selecteur de scene
         let scene = Scene::build_scene(
             SceneDescriptor {
-                name: "Test Poutre",
-                description: "Poutre encastree a gauche",
-                mesh_type: ElasticMeshType::Box(12, 3, 3, 0.08),
+                name: "Test Compression",
+                description: "Test de la compression pour le neo-hookeen",
+                mesh_type: ElasticMeshType::Box(4, 4, 4, 0.08),
                 time_step: 0.05,
-                anchoring: Anchoring::LeftFace(1e-9),
+                anchoring: Anchoring::Bottom(1e-9),
             },
             &renderer,
         );
@@ -110,7 +111,10 @@ impl State {
         if self.cursor_locked {
             return;
         }
-        if button == MouseButton::Left && is_pressed {
+        if button == MouseButton::Left
+            && is_pressed
+            && !self.renderer.ui_ctx().egui_wants_pointer_input()
+        {
             self.scene.select_from_ray(
                 &self
                     .renderer

@@ -341,20 +341,6 @@ impl TetMesh {
         &self.tets
     }
 
-    pub fn pins(&self) -> Vec<Vector3<f64>> {
-        self.rest_positions
-            .iter()
-            .enumerate()
-            .filter_map(|(i, pos)| {
-                if self.pinned[i] {
-                    Some(pos.clone())
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
-
     pub fn node_count(&self) -> usize {
         self.rest_positions.len()
     }
@@ -373,5 +359,9 @@ impl TetMesh {
 
     pub fn rest_positions(&self) -> &[Vector3<f64>] {
         &self.rest_positions
+    }
+
+    pub fn pin(&mut self, index: usize) {
+        self.pinned[index] = true;
     }
 }
