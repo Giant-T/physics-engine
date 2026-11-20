@@ -1,13 +1,11 @@
-use std::f32::consts::PI;
+use std::f64::consts::PI;
 
 use nalgebra::{Matrix4, Perspective3, Point3, Vector2, Vector3, Vector4};
 use wgpu::util::DeviceExt;
 
-use crate::{input_state::InputState, ray::Ray};
+use crate::{input_state::InputState, ray::Ray, transform::Transform};
 
-use super::Transform;
-
-const PITCH_LIMIT: f32 = PI / 2.0 - 0.001;
+const PITCH_LIMIT: f64 = PI / 2.0 - 0.001;
 
 #[rustfmt::skip]
 pub const OPENGL_TO_WGPU_MATRIX: Matrix4<f32> = Matrix4::new(
@@ -18,14 +16,14 @@ pub const OPENGL_TO_WGPU_MATRIX: Matrix4<f32> = Matrix4::new(
 );
 
 pub struct Camera {
-    transform: Transform,
-    yaw: f32,
-    pitch: f32,
+    transform: Transform<f64>,
+    yaw: f64,
+    pitch: f64,
 
-    aspect: f32,
-    fovy: f32,
-    znear: f32,
-    zfar: f32,
+    aspect: f64,
+    fovy: f64,
+    znear: f64,
+    zfar: f64,
 
     view_proj_buffer: wgpu::Buffer,
     position_buffer: wgpu::Buffer,
@@ -38,18 +36,18 @@ pub struct Camera {
 impl Camera {
     pub fn new(
         device: &wgpu::Device,
-        position: Point3<f32>,
-        pitch: f32,
-        yaw: f32,
-        aspect: f32,
-        fovy: f32,
-        znear: f32,
-        zfar: f32,
+        position: Point3<f64>,
+        pitch: f64,
+        yaw: f64,
+        aspect: f64,
+        fovy: f64,
+        znear: f64,
+        zfar: f64,
     ) -> Self {
         let transform = Transform::from_position_pitch_yaw(position, pitch, yaw);
 
         let matrix: [[f32; 4]; 4] = (Self::proj_matrix(aspect, fovy, znear, zfar)
-            * transform.matrix().try_inverse().unwrap())
+            * transform.matrix().map(|x| x as f32).try_inverse().unwrap())
         .into();
         let view_proj_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("View Proj Buffer"),
@@ -57,21 +55,21 @@ impl Camera {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        let position: [f32; 3] = transform.position().into();
+        let position = transform.position_buffer();
         let position_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Camera Position Buffer"),
             contents: bytemuck::cast_slice(&[position]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        let up: [f32; 3] = transform.up().into();
+        let up = transform.up_buffer();
         let up_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Camera Up Buffer"),
             contents: bytemuck::cast_slice(&[up]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        let right: [f32; 3] = transform.right().into();
+        let right = transform.right_buffer();
         let right_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Camera Right Buffer"),
             contents: bytemuck::cast_slice(&[right]),
@@ -165,31 +163,36 @@ impl Camera {
         }
     }
 
-    fn proj_matrix(aspect: f32, fovy: f32, znear: f32, zfar: f32) -> Matrix4<f32> {
-        Perspective3::new(aspect, fovy, znear, zfar).to_homogeneous()
+    fn proj_matrix(aspect: f64, fovy: f64, znear: f64, zfar: f64) -> Matrix4<f32> {
+        Perspective3::new(aspect as f32, fovy as f32, znear as f32, zfar as f32).to_homogeneous()
     }
 
     fn build_matrix(&self) -> Matrix4<f32> {
-        let view = self.transform.matrix().try_inverse().unwrap();
+        let view = self
+            .transform
+            .matrix()
+            .map(|x| x as f32)
+            .try_inverse()
+            .unwrap();
 
         OPENGL_TO_WGPU_MATRIX
             * Self::proj_matrix(self.aspect, self.fovy, self.znear, self.zfar)
             * view
     }
 
-    pub fn set_aspect(&mut self, aspect: f32) {
+    pub fn set_aspect(&mut self, aspect: f64) {
         self.aspect = aspect;
     }
 
     pub fn update_uniforms(&self, queue: &wgpu::Queue) {
         let matrix: [[f32; 4]; 4] = self.build_matrix().into();
         queue.write_buffer(&self.view_proj_buffer, 0, bytemuck::cast_slice(&[matrix]));
-        let position: [f32; 3] = self.transform.position().into();
+        let position = self.transform.position_buffer();
         queue.write_buffer(&self.position_buffer, 0, bytemuck::cast_slice(&[position]));
 
-        let up: [f32; 3] = self.transform.up().into();
+        let up = self.transform.up_buffer();
         queue.write_buffer(&self.up_buffer, 0, bytemuck::cast_slice(&[up]));
-        let right: [f32; 3] = self.transform.right().into();
+        let right = self.transform.right_buffer();
         queue.write_buffer(&self.right_buffer, 0, bytemuck::cast_slice(&[right]));
     }
 
@@ -201,15 +204,15 @@ impl Camera {
         &self.bind_group
     }
 
-    pub fn transform(&self) -> &Transform {
+    pub fn transform(&self) -> &Transform<f64> {
         &self.transform
     }
 
-    pub fn transform_mut(&mut self) -> &mut Transform {
+    pub fn transform_mut(&mut self) -> &mut Transform<f64> {
         &mut self.transform
     }
 
-    fn update_pitch_yaw(&mut self, pitch: f32, yaw: f32) {
+    fn update_pitch_yaw(&mut self, pitch: f64, yaw: f64) {
         self.pitch += pitch;
         self.pitch = self.pitch.clamp(-PITCH_LIMIT, PITCH_LIMIT);
         self.yaw += yaw;
@@ -231,12 +234,12 @@ impl Camera {
 }
 
 pub struct CameraController {
-    speed: f32,
-    sensitivity: f32,
+    speed: f64,
+    sensitivity: f64,
 }
 
 impl CameraController {
-    pub fn new(speed: f32, sensitivity: f32) -> Self {
+    pub fn new(speed: f64, sensitivity: f64) -> Self {
         Self { speed, sensitivity }
     }
 
@@ -261,7 +264,7 @@ impl CameraController {
         let up = transform.up();
         let right = transform.right();
 
-        let mut translation = Vector3::<f32>::zeros();
+        let mut translation = Vector3::<f64>::zeros();
 
         // Avancer/Reculer
         if input.is_forward_pressed() {
@@ -288,7 +291,7 @@ impl CameraController {
         }
 
         if translation.magnitude_squared() > 0.0 {
-            transform.translate(translation.normalize() * self.speed * delta_time as f32);
+            transform.translate(translation.normalize() * self.speed as f64 * delta_time);
         }
     }
 

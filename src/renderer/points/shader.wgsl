@@ -18,6 +18,7 @@ struct VertexOutput {
     @location(0) uv: vec2<f32>,
 };
 
+// Pas envie d'ecrire ca a la main donc IA
 const QUAD: array<vec2<f32>, 4> = array<vec2<f32>, 4>(
     vec2<f32>(-1.0, -1.0),
     vec2<f32>( 1.0, -1.0),

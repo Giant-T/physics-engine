@@ -1,9 +1,9 @@
 use wgpu::util::DeviceExt;
 
-use super::Transform;
+use crate::transform::Transform;
 
 pub struct PointLight {
-    transform: Transform,
+    transform: Transform<f64>,
 
     position_buffer: wgpu::Buffer,
     bind_group_layout: wgpu::BindGroupLayout,
@@ -11,8 +11,8 @@ pub struct PointLight {
 }
 
 impl PointLight {
-    pub fn new(device: &wgpu::Device, transform: Transform) -> Self {
-        let position: [f32; 3] = transform.position().into();
+    pub fn new(device: &wgpu::Device, transform: Transform<f64>) -> Self {
+        let position = transform.position_buffer();
         let position_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Point Light Position Buffer"),
             contents: bytemuck::cast_slice(&[position]),

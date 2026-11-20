@@ -5,6 +5,7 @@ mod physics;
 mod ray;
 mod renderer;
 mod scenes;
+mod transform;
 
 fn main() -> anyhow::Result<()> {
     env_logger::init();

@@ -6,23 +6,24 @@ use winit::{event::WindowEvent, window::Window};
 
 use camera::Camera;
 
+mod aabb;
 mod camera;
 mod light;
 mod mesh;
 mod pipeline;
 mod points;
 mod texture;
-mod transform;
 mod vertex;
 
-use super::scenes::Scene;
+use crate::{scenes::manager::SceneManager, transform::Transform};
+
 use light::PointLight;
 use texture::Texture;
 
+pub use aabb::AABBRenderer;
 pub use camera::CameraController;
 pub use mesh::MeshRenderer;
 pub use points::PointsRenderer;
-pub use transform::Transform;
 
 pub trait Renderable {
     fn render(&self, renderer: &Renderer, render_pass: &mut wgpu::RenderPass);
@@ -77,7 +78,7 @@ impl Renderer {
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: None,
-                required_features: wgpu::Features::empty(),
+                required_features: wgpu::Features::POLYGON_MODE_LINE,
                 experimental_features: wgpu::ExperimentalFeatures::disabled(),
                 required_limits: Default::default(),
                 memory_hints: Default::default(),
@@ -111,7 +112,7 @@ impl Renderer {
             Point3::new(0.0, 0.0, 5.0),
             0.0,
             0.0,
-            config.width as f32 / config.height as f32,
+            config.width as f64 / config.height as f64,
             45.0,
             0.1,
             100.0,
@@ -173,15 +174,15 @@ impl Renderer {
         self.surface.configure(&self.device, &self.config);
         self.is_surface_configured = true;
 
-        self.camera.set_aspect(width as f32 / height as f32);
+        self.camera.set_aspect(width as f64 / height as f64);
 
         self.depth_texture = Texture::create_depth_texture(&self.device, &self.config);
     }
 
     pub fn render(
         &mut self,
-        window: &Window,
-        scene: &mut Scene,
+        window: Arc<Window>,
+        scene_manager: &mut SceneManager,
         delta_time: f64,
     ) -> anyhow::Result<()> {
         if !self.is_surface_configured {
@@ -209,8 +210,8 @@ impl Renderer {
                 label: Some("Render Encoder"),
             });
 
-        self.render_scene(&view, &mut encoder, scene);
-        self.render_ui(&view, &mut encoder, window, scene, delta_time);
+        self.render_scene(&view, &mut encoder, scene_manager);
+        self.render_ui(&view, &mut encoder, &window, scene_manager, delta_time);
 
         self.queue.submit(std::iter::once(encoder.finish()));
         self.queue.present(output);
@@ -222,7 +223,7 @@ impl Renderer {
         &mut self,
         view: &wgpu::TextureView,
         encoder: &mut wgpu::CommandEncoder,
-        scene: &mut Scene,
+        scene_manager: &mut SceneManager,
     ) {
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Render Pass"),
@@ -253,7 +254,7 @@ impl Renderer {
             multiview_mask: None,
         });
 
-        scene.render(self, &mut render_pass);
+        scene_manager.scene_mut().render(self, &mut render_pass);
     }
 
     fn render_ui(
@@ -261,7 +262,7 @@ impl Renderer {
         view: &wgpu::TextureView,
         encoder: &mut wgpu::CommandEncoder,
         window: &Window,
-        scene: &mut Scene,
+        scene_manager: &mut SceneManager,
         delta_time: f64,
     ) {
         let input = self.ui_state.take_egui_input(window);
@@ -270,7 +271,7 @@ impl Renderer {
             ui.label(format!("{delta_time:.6} delta time"));
             ui.label(format!("{fps:.0} fps"));
 
-            scene.ui(ui, &self);
+            scene_manager.ui(ui, &self);
         });
 
         let clipped_primitives = self

@@ -1,14 +1,14 @@
-use std::{ops::AddAssign, rc::Rc, sync::Mutex};
+use std::{rc::Rc, sync::Mutex};
 
 use nalgebra::{DVector, Vector3};
 use nalgebra_sparse::{CooMatrix, CsrMatrix};
 
-use crate::renderer::{Renderer, UIElement};
-
-use super::{elastic_model::ElasticModel, linalg::ConjugateGradient, tet_mesh::TetMesh};
+use super::{
+    super::{linalg::ConjugateGradient, tet_mesh::TetMesh},
+    ElasticModel,
+};
 
 pub struct SolverOptions {
-    pub time_step: f64,
     pub max_iterations: usize,
     pub tolerance: f64,
 }
@@ -16,7 +16,6 @@ pub struct SolverOptions {
 impl Default for SolverOptions {
     fn default() -> Self {
         Self {
-            time_step: 0.02,
             max_iterations: 1000,
             tolerance: 1e-5,
         }
@@ -25,7 +24,6 @@ impl Default for SolverOptions {
 
 pub struct ImplicitSolver {
     model: Rc<Mutex<ElasticModel>>,
-    time_step: f64,
     conjugate_gradient: ConjugateGradient,
     pub x: DVector<f64>,
     pub v: DVector<f64>,
@@ -47,7 +45,6 @@ impl ImplicitSolver {
         let delta_v = DVector::zeros(model_val.mesh().dof_count());
         Self {
             model,
-            time_step: options.time_step,
             conjugate_gradient: ConjugateGradient::new(options.max_iterations, options.tolerance),
             x,
             v,
@@ -88,8 +85,7 @@ impl ImplicitSolver {
         CsrMatrix::from(&system_matrix)
     }
 
-    pub fn step(&mut self) {
-        let h = self.time_step;
+    pub fn step(&mut self, h: f64) {
         let (mut system_matrix, mut rhs) = self.assemble_system(h);
 
         Self::apply_pin_constraints(

@@ -10,12 +10,10 @@ use winit::{
     window::Window,
 };
 
-use crate::scenes::ElasticMeshType;
-
-use super::{
+use crate::{
     input_state::InputState,
     renderer::{CameraController, Renderer},
-    scenes::{Anchoring, Scene, SceneDescriptor},
+    scenes::manager::SceneManager,
 };
 
 pub struct State {
@@ -25,7 +23,7 @@ pub struct State {
 
     camera_controller: CameraController,
 
-    scene: Scene,
+    scene_manager: SceneManager,
 
     cursor_locked: bool,
     cursor_position: Vector2<f64>,
@@ -38,16 +36,7 @@ impl State {
         let camera_controller = CameraController::new(10.0, 0.005);
 
         // TODO: Ajouter un selecteur de scene
-        let scene = Scene::build_scene(
-            SceneDescriptor {
-                name: "Test Compression",
-                description: "Test de la compression pour le neo-hookeen",
-                mesh_type: ElasticMeshType::Box(4, 4, 4, 0.08),
-                time_step: 0.05,
-                anchoring: Anchoring::Bottom(1e-9),
-            },
-            &renderer,
-        );
+        let scene_manager = SceneManager::new(&renderer);
 
         Ok(Self {
             window,
@@ -56,7 +45,7 @@ impl State {
 
             camera_controller,
 
-            scene,
+            scene_manager,
 
             last_frame_time: Instant::now(),
             cursor_locked: false,
@@ -115,7 +104,7 @@ impl State {
             && is_pressed
             && !self.renderer.ui_ctx().egui_wants_pointer_input()
         {
-            self.scene.select_from_ray(
+            self.scene_manager.scene_mut().select_from_ray(
                 &self
                     .renderer
                     .camera()
@@ -126,7 +115,7 @@ impl State {
     }
 
     fn update(&mut self, delta_time: f64) {
-        self.scene.update(&self.renderer, delta_time);
+        self.scene_manager.update_scene(&self.renderer, delta_time);
         self.camera_controller.update_camera(
             &self.input_state,
             self.renderer.camera_mut(),
@@ -142,11 +131,11 @@ impl State {
         self.input_state.reset_mouse_delta();
 
         self.renderer
-            .render(&self.window, &mut self.scene, delta_time)
+            .render(self.window.clone(), &mut self.scene_manager, delta_time)
     }
 
     fn handle_mouse_move(&mut self, mouse_delta: (f64, f64)) {
-        let mouse_delta = Vector2::new(mouse_delta.0 as f32, mouse_delta.1 as f32);
+        let mouse_delta = Vector2::new(mouse_delta.0, mouse_delta.1);
         self.input_state.handle_mouse_move(mouse_delta);
     }
 
@@ -155,6 +144,10 @@ impl State {
         let x = (2.0 * position.x) / size.width as f64 - 1.0;
         let y = 1.0 - (2.0 * position.y) / size.height as f64;
         self.cursor_position = Vector2::new(x, y);
+    }
+
+    pub fn scene_manager_mut(&mut self) -> &mut SceneManager {
+        &mut self.scene_manager
     }
 }
 

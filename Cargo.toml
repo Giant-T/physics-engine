@@ -17,6 +17,8 @@ egui-wgpu = "0.36.2"
 egui-winit = "0.36.2"
 nalgebra = "0.33.3"
 nalgebra-sparse = "0.10.0"
+num-traits = "0.2.19"
+rand = "0.10.4"
 
 [profile.dev.package.nalgebra]
 opt-level = 3

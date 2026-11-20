@@ -11,6 +11,7 @@ use model_type::ElasticModelType;
 mod corotational;
 pub mod model_type;
 mod neo_hookean;
+pub mod solver;
 mod stvk;
 
 pub struct LameParameters {

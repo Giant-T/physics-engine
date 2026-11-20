@@ -5,10 +5,10 @@ pub struct BasicRenderPipeline {
 }
 
 impl BasicRenderPipeline {
-    pub fn new(renderer: &Renderer) -> Self {
+    pub fn new(renderer: &Renderer, model_bind_group_layout: &wgpu::BindGroupLayout) -> Self {
         let bind_group_layouts = &[
             Some(renderer.camera.bind_group_layout()),
-            Some(renderer.light.bind_group_layout()),
+            Some(model_bind_group_layout),
         ];
 
         let shader = renderer

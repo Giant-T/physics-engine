@@ -1,9 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
-use nalgebra::Vector3;
+use nalgebra::{Matrix4, Vector3};
 use wgpu::util::DeviceExt;
 
-use crate::physics::tet_mesh::TetMesh;
+use crate::{physics::tet_mesh::TetMesh, transform::Transform};
 
 use super::{Renderable, Renderer, pipeline::BasicRenderPipeline, vertex::Vertex};
 
@@ -12,18 +12,28 @@ pub struct MeshRenderer {
     pub index_buffer: wgpu::Buffer,
     pub num_indices: u32,
 
+    transform_buffer: wgpu::Buffer,
+    bind_group: wgpu::BindGroup,
+
     indices: Vec<[u32; 3]>,
     unique_indices: Vec<u32>,
     render_pipeline: BasicRenderPipeline,
 }
 
 impl MeshRenderer {
-    pub fn new(renderer: &Renderer, vertices: &[Vertex], indices: &[u32]) -> Self {
+    pub fn new(renderer: &Renderer, vertices: &[Vector3<f64>], indices: &[u32]) -> Self {
+        let vertices: Vec<Vertex> = vertices
+            .iter()
+            .map(|v| Vertex {
+                position: [v[0] as f32, v[1] as f32, v[2] as f32],
+            })
+            .collect();
+
         let vertex_buffer = renderer
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: None,
-                contents: bytemuck::cast_slice(vertices),
+                contents: bytemuck::cast_slice(&vertices),
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             });
         let index_buffer = renderer
@@ -36,7 +46,44 @@ impl MeshRenderer {
 
         let num_indices = indices.len() as u32;
 
-        let render_pipeline = BasicRenderPipeline::new(&renderer);
+        let transform_buffer =
+            renderer
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: None,
+                    contents: bytemuck::cast_slice(Matrix4::<f32>::identity().as_slice()),
+                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                });
+
+        let bind_group_layout =
+            renderer
+                .device
+                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("Model Bind Group Layout"),
+                    entries: &[wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::VERTEX,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    }],
+                });
+
+        let bind_group = renderer
+            .device
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Model Bind Group"),
+                layout: &bind_group_layout,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: transform_buffer.as_entire_binding(),
+                }],
+            });
+
+        let render_pipeline = BasicRenderPipeline::new(&renderer, &bind_group_layout);
 
         let indices: Vec<[u32; 3]> = indices
             .chunks_exact(3)
@@ -49,6 +96,8 @@ impl MeshRenderer {
             vertex_buffer,
             index_buffer,
             num_indices,
+            transform_buffer,
+            bind_group,
             indices,
             unique_indices,
             render_pipeline,
@@ -98,12 +147,51 @@ impl MeshRenderer {
 
         let num_indices = indices.len() as u32 * 3;
 
-        let render_pipeline = BasicRenderPipeline::new(renderer);
+        let transform_buffer =
+            renderer
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: None,
+                    contents: bytemuck::cast_slice(Matrix4::<f32>::identity().as_slice()),
+                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                });
+
+        let bind_group_layout =
+            renderer
+                .device
+                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("Model Bind Group Layout"),
+                    entries: &[wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::VERTEX,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    }],
+                });
+
+        let bind_group = renderer
+            .device
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Model Bind Group"),
+                layout: &bind_group_layout,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: transform_buffer.as_entire_binding(),
+                }],
+            });
+
+        let render_pipeline = BasicRenderPipeline::new(&renderer, &bind_group_layout);
 
         Self {
             vertex_buffer,
             index_buffer,
             num_indices,
+            transform_buffer,
+            bind_group,
             render_pipeline,
             indices,
             unique_indices,
@@ -140,6 +228,14 @@ impl MeshRenderer {
         unique_indices
     }
 
+    pub fn update_transform_buffer(&self, transform: &Transform<f64>, renderer: &Renderer) {
+        renderer.queue.write_buffer(
+            &self.transform_buffer,
+            0,
+            bytemuck::cast_slice(&transform.to_buffer()),
+        );
+    }
+
     pub fn update_mesh(&mut self, renderer: &Renderer, current_positions: &[Vector3<f64>]) {
         renderer.queue.write_buffer(
             &self.vertex_buffer,
@@ -156,7 +252,7 @@ impl Renderable for MeshRenderer {
     fn render(&self, renderer: &super::Renderer, render_pass: &mut wgpu::RenderPass) {
         render_pass.set_pipeline(self.render_pipeline.pipeline());
         render_pass.set_bind_group(0, renderer.camera.bind_group(), &[]);
-        render_pass.set_bind_group(1, renderer.light.bind_group(), &[]);
+        render_pass.set_bind_group(1, &self.bind_group, &[]);
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
         render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
         render_pass.draw_indexed(0..self.num_indices, 0, 0..1);

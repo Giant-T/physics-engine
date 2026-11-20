@@ -5,12 +5,14 @@ use nalgebra::{Point3, Rotation3, Vector3};
 
 use crate::{
     physics::{
-        elastic_model::{ElasticModel, LameParameters, model_type::ElasticModelType},
-        solver::{ImplicitSolver, SolverOptions},
+        elastic_model::{
+            ElasticModel, LameParameters, model_type::ElasticModelType, solver::ImplicitSolver,
+        },
         tet_mesh::TetMesh,
     },
     ray::{Ray, RayDistance},
     renderer::{MeshRenderer, PointsRenderer, Renderable, Renderer, UIElement},
+    scenes::runtime::SceneRuntimeImpl,
 };
 
 const POINT_SELECTION_MIN_DIST: f64 = 0.1;
@@ -37,8 +39,7 @@ impl ElasticMeshType {
     }
 }
 
-pub struct SceneObject {
-    name: String,
+pub struct ElasticSceneRuntime {
     model: Rc<Mutex<ElasticModel>>,
     solver: ImplicitSolver,
     selected_point: Option<usize>,
@@ -48,7 +49,7 @@ pub struct SceneObject {
     max_y: f64,
 }
 
-impl SceneObject {
+impl ElasticSceneRuntime {
     pub fn new(
         mesh_type: &ElasticMeshType,
         anchoring: &Anchoring,
@@ -83,13 +84,7 @@ impl SceneObject {
             ElasticModelType::StVK,
         )));
 
-        let solver = ImplicitSolver::new(
-            model.clone(),
-            SolverOptions {
-                time_step,
-                ..Default::default()
-            },
-        );
+        let solver = ImplicitSolver::new(model.clone(), Default::default());
 
         let pins_renderer = PointsRenderer::from_points(&solver.pins(), renderer);
         let selected_point_renderer = PointsRenderer::from_points(&[], renderer);
@@ -102,7 +97,6 @@ impl SceneObject {
             + 0.2;
 
         Self {
-            name: mesh_type.name(),
             model,
             solver,
             selected_point: None,
@@ -113,60 +107,8 @@ impl SceneObject {
         }
     }
 
-    pub fn update(&mut self) {
-        self.restrain();
-        self.solver.step();
-    }
-
-    pub fn reset(&mut self, renderer: &Renderer) {
-        self.solver.reset();
-        self.selected_point = None;
-        self.pins_renderer.set_points(&self.solver.pins(), renderer);
-        self.max_y = self
-            .solver
-            .x
-            .as_slice()
-            .chunks_exact(3)
-            .fold(self.solver.x[1], |acc, v| acc.max(v[1]))
-            + 0.2;
-    }
-
-    pub fn update_mesh(&mut self, renderer: &Renderer) {
-        self.mesh_renderer
-            .update_mesh(&renderer, &self.solver.current_positions());
-    }
-
     pub fn model_mut(&mut self) -> &mut Rc<Mutex<ElasticModel>> {
         &mut self.model
-    }
-
-    pub fn select_from_ray(&mut self, ray: &Ray, renderer: &Renderer) {
-        let model = self.model.lock().unwrap();
-        let mut closest = None;
-        let mut closest_dist: Option<RayDistance> = None;
-
-        for idx in 0..model.mesh().node_count() {
-            let vector = Vector3::from(self.solver.x.fixed_rows::<3>(3 * idx));
-            if let Some(dist) = ray.dist_with_point(&Point3::from(vector)) {
-                if dist.distance > POINT_SELECTION_MIN_DIST {
-                    continue;
-                }
-
-                if closest_dist.is_none() || dist.distance < closest_dist.clone().unwrap().distance
-                {
-                    closest_dist = Some(dist);
-                    closest = Some(idx);
-                }
-            }
-        }
-
-        self.selected_point = closest;
-        if let Some(idx) = closest {
-            let vector = Vector3::from(self.solver.x.fixed_rows::<3>(3 * idx));
-            self.selected_point_renderer.set_points(&[vector], renderer);
-        } else {
-            self.selected_point_renderer.set_points(&[], renderer);
-        }
     }
 
     fn pin_selected_point(&mut self, renderer: &Renderer) {
@@ -205,6 +147,7 @@ impl SceneObject {
         drop(model);
 
         self.pins_renderer.set_points(&self.solver.pins(), renderer);
+        self.update_mesh(renderer);
 
         self.solver.reset_v();
     }
@@ -212,13 +155,67 @@ impl SceneObject {
     fn restrain(&mut self) {
         let model = self.model.lock().unwrap();
 
-        for idx in (0..model.mesh().node_count()).step_by(3).skip(1) {
+        for idx in (0..model.mesh().node_count()).skip(1).step_by(3) {
             self.solver.x[idx] = self.solver.x[idx].min(self.max_y);
         }
     }
 }
 
-impl UIElement for SceneObject {
+impl SceneRuntimeImpl for ElasticSceneRuntime {
+    fn update(&mut self, h: f64) {
+        self.restrain();
+        self.solver.step(h);
+    }
+
+    fn reset(&mut self, renderer: &Renderer) {
+        self.solver.reset();
+        self.selected_point = None;
+        self.pins_renderer.set_points(&self.solver.pins(), renderer);
+        self.max_y = self
+            .solver
+            .x
+            .as_slice()
+            .chunks_exact(3)
+            .fold(self.solver.x[1], |acc, v| acc.max(v[1]))
+            + 0.2;
+    }
+
+    fn update_mesh(&mut self, renderer: &Renderer) {
+        self.mesh_renderer
+            .update_mesh(&renderer, &self.solver.current_positions());
+    }
+
+    fn select_from_ray(&mut self, ray: &Ray, renderer: &Renderer) {
+        let model = self.model.lock().unwrap();
+        let mut closest = None;
+        let mut closest_dist: Option<RayDistance> = None;
+
+        for idx in 0..model.mesh().node_count() {
+            let vector = Vector3::from(self.solver.x.fixed_rows::<3>(3 * idx));
+            if let Some(dist) = ray.dist_with_point(&Point3::from(vector)) {
+                if dist.distance > POINT_SELECTION_MIN_DIST {
+                    continue;
+                }
+
+                if closest_dist.is_none() || dist.distance < closest_dist.clone().unwrap().distance
+                {
+                    closest_dist = Some(dist);
+                    closest = Some(idx);
+                }
+            }
+        }
+
+        self.selected_point = closest;
+        if let Some(idx) = closest {
+            let vector = Vector3::from(self.solver.x.fixed_rows::<3>(3 * idx));
+            self.selected_point_renderer.set_points(&[vector], renderer);
+        } else {
+            self.selected_point_renderer.set_points(&[], renderer);
+        }
+    }
+}
+
+impl UIElement for ElasticSceneRuntime {
     fn ui(&mut self, ui: &mut egui::Ui, renderer: &Renderer) {
         ui.columns(2, |columns| {
             if columns[0].button("Rotate").clicked() {
@@ -255,7 +252,7 @@ impl UIElement for SceneObject {
     }
 }
 
-impl Renderable for SceneObject {
+impl Renderable for ElasticSceneRuntime {
     fn render(&self, renderer: &Renderer, render_pass: &mut wgpu::RenderPass) {
         self.mesh_renderer.render(renderer, render_pass);
         self.pins_renderer.render(renderer, render_pass);

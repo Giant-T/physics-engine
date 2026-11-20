@@ -2,7 +2,7 @@ use nalgebra::Vector2;
 use winit::keyboard::KeyCode;
 
 pub struct InputState {
-    mouse_delta: Vector2<f32>,
+    mouse_delta: Vector2<f64>,
     is_forward_pressed: bool,
     is_backward_pressed: bool,
     is_left_pressed: bool,
@@ -40,7 +40,7 @@ impl InputState {
         }
     }
 
-    pub fn mouse_delta(&self) -> Vector2<f32> {
+    pub fn mouse_delta(&self) -> Vector2<f64> {
         self.mouse_delta
     }
 
@@ -68,7 +68,7 @@ impl InputState {
         self.is_ctrl_pressed
     }
 
-    pub fn handle_mouse_move(&mut self, movement: Vector2<f32>) {
+    pub fn handle_mouse_move(&mut self, movement: Vector2<f64>) {
         self.mouse_delta += movement;
     }
 }

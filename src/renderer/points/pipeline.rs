@@ -18,7 +18,7 @@ impl PointRenderPipeline {
             renderer
                 .device
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                    label: Some("Pin Render Pipeline Layout"),
+                    label: Some("Point Render Pipeline Layout"),
                     bind_group_layouts,
                     immediate_size: 0,
                 });
