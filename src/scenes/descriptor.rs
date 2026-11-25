@@ -5,7 +5,7 @@ pub enum SceneType {
         mesh_type: ElasticMeshType,
         anchoring: Anchoring,
     },
-    Collisions {
+    CollisionDetections {
         n_bodies: usize,
         half_size: f64,
     },

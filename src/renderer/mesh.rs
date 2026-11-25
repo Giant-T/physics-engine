@@ -7,6 +7,7 @@ use crate::{physics::tet_mesh::TetMesh, transform::Transform};
 
 use super::{Renderable, Renderer, pipeline::BasicRenderPipeline, vertex::Vertex};
 
+// TODO: Ajouter une couleur variable
 pub struct MeshRenderer {
     pub vertex_buffer: wgpu::Buffer,
     pub index_buffer: wgpu::Buffer,

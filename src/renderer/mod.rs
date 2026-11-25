@@ -13,6 +13,7 @@ mod mesh;
 mod pipeline;
 mod points;
 mod texture;
+mod vectors;
 mod vertex;
 
 use crate::{scenes::manager::SceneManager, transform::Transform};
@@ -24,6 +25,7 @@ pub use aabb::AABBRenderer;
 pub use camera::CameraController;
 pub use mesh::MeshRenderer;
 pub use points::PointsRenderer;
+pub use vectors::VectorsRenderer;
 
 pub trait Renderable {
     fn render(&self, renderer: &Renderer, render_pass: &mut wgpu::RenderPass);

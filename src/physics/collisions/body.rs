@@ -1,13 +1,23 @@
 use std::{rc::Rc, sync::Mutex};
 
-use nalgebra::{Point3, Vector3};
+use nalgebra::{Point3, Vector3, Vector4};
 
-use super::super::tri_mesh::TriMesh;
 use crate::{
-    physics::collisions::aabb::AABBTree,
+    physics::{
+        collisions::{aabb::AABBTree, narrow_phase::Contact},
+        tri_mesh::TriMesh,
+    },
     renderer::{MeshRenderer, Renderable, Renderer},
     transform::Transform,
 };
+
+pub struct BodyContact {
+    pub vertex_body: usize,
+    pub vertex: usize,
+    pub triangle_body: usize,
+    pub triangle: usize,
+    pub contact: Contact,
+}
 
 pub struct Body {
     mesh: TriMesh,
@@ -16,6 +26,7 @@ pub struct Body {
     velocity: Vector3<f64>,
     angular_velocity: Vector3<f64>,
     bounds: AABBTree,
+    pub show_bounds: bool,
 }
 
 impl Body {
@@ -38,6 +49,7 @@ impl Body {
             velocity,
             angular_velocity,
             bounds,
+            show_bounds: false,
         }
     }
 
@@ -67,6 +79,16 @@ impl Body {
         transform.position()
     }
 
+    pub fn world_vertices(&self) -> Vec<Vector3<f64>> {
+        let transform = self.transform.lock().unwrap();
+        let matrix = transform.matrix();
+        self.mesh
+            .vertices()
+            .iter()
+            .map(|vertex| (matrix * Vector4::new(vertex.x, vertex.y, vertex.z, 1.0)).xyz())
+            .collect()
+    }
+
     pub fn radius(&self) -> f64 {
         1.0
     }
@@ -88,6 +110,10 @@ impl Body {
         &self.bounds
     }
 
+    pub fn bounds_mut(&mut self) -> &mut AABBTree {
+        &mut self.bounds
+    }
+
     pub fn transform(&self) -> Rc<Mutex<Transform<f64>>> {
         self.transform.clone()
     }
@@ -96,6 +122,9 @@ impl Body {
 impl Renderable for Body {
     fn render(&self, renderer: &Renderer, render_pass: &mut wgpu::RenderPass) {
         self.mesh_renderer.render(renderer, render_pass);
-        self.bounds.render(renderer, render_pass);
+
+        if self.show_bounds {
+            self.bounds.render(renderer, render_pass);
+        }
     }
 }

@@ -12,6 +12,7 @@ use crate::{
 pub struct AABB {
     pub center: Point3<f64>,
     pub half_extents: Vector3<f64>,
+    pub depth: u32,
 }
 
 impl AABB {
@@ -26,6 +27,7 @@ impl AABB {
         Self {
             center: ((min + max) * 0.5).into(),
             half_extents: (max - min) * 0.5,
+            depth: 0,
         }
     }
 
@@ -45,7 +47,16 @@ impl AABB {
         Self {
             center: transform.point_to_world(&self.center),
             half_extents: transform.vector_to_world(&self.half_extents),
+            depth: self.depth,
         }
+    }
+
+    pub fn point_is_in(&self, point: &Vector3<f64>) -> bool {
+        let diff = point - self.center.coords;
+
+        diff.x <= self.half_extents.x
+            && diff.y <= self.half_extents.y
+            && diff.z <= self.half_extents.z
     }
 
     pub fn overlap(a: &Self, b: &Self) -> bool {
@@ -61,6 +72,7 @@ impl AABB {
         Self {
             center: ((min + max) * 0.5).into(),
             half_extents: (max - min) * 0.5,
+            depth: aabb1.depth,
         }
     }
 }
@@ -108,6 +120,8 @@ pub struct AABBTree {
     nodes: Vec<AABBNode>,
     root: usize,
     margin: f64,
+    max_depth: u32,
+    shown_depth: u32,
     bounds_renderer: AABBRenderer,
     triangle_count: usize,
 }
@@ -147,9 +161,13 @@ impl AABBTree {
             level = next;
         }
 
+        let max_depth = Self::compute_depths(level[0], 1, &mut nodes);
+        let shown_depth = 1;
+
         let transform_val = transform.lock().unwrap();
         let aabbs: Vec<AABB> = nodes
             .iter()
+            .filter(|node| node.bounds.depth == shown_depth)
             .map(|node| node.bounds.transform(&transform_val))
             .collect();
         let bounds_renderer = AABBRenderer::from_aabb_list(&aabbs, renderer);
@@ -158,6 +176,8 @@ impl AABBTree {
             transform: transform.clone(),
             nodes,
             root: level[0],
+            max_depth,
+            shown_depth,
             margin,
             bounds_renderer,
             triangle_count,
@@ -308,21 +328,49 @@ impl AABBTree {
         }
     }
 
+    fn compute_depths(current_node: usize, current_depth: u32, nodes: &mut Vec<AABBNode>) -> u32 {
+        let current_node = &mut nodes[current_node];
+        current_node.bounds.depth = current_depth;
+
+        match current_node.ty {
+            AABBBNodeType::Node { left, right } => {
+                let left_depth = Self::compute_depths(left, current_depth + 1, nodes);
+                let right_depth = Self::compute_depths(right, current_depth + 1, nodes);
+
+                left_depth.max(right_depth)
+            }
+            AABBBNodeType::Leaf { .. } => current_depth,
+        }
+    }
+
     pub fn update_mesh(&mut self, renderer: &Renderer) {
         let aabbs: Vec<AABB> = self
             .nodes
             .iter()
+            .filter(|node| node.bounds.depth == self.shown_depth)
             .map(|node| node.bounds.transform(&self.transform.lock().unwrap()))
             .collect();
         self.bounds_renderer.set_aabbs(&aabbs, renderer);
+    }
+
+    pub fn set_shown_depth(&mut self, shown_depth: u32) {
+        self.shown_depth = shown_depth.min(self.max_depth);
     }
 
     pub fn nodes(&self) -> &[AABBNode] {
         &self.nodes
     }
 
+    pub fn max_depth(&self) -> u32 {
+        self.max_depth
+    }
+
     pub fn root(&self) -> usize {
         self.root
+    }
+
+    pub fn root_bounds(&self) -> &AABB {
+        &self.nodes[self.root].bounds
     }
 }
 

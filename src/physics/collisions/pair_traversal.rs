@@ -1,4 +1,9 @@
-use super::{AABB, Body, TrianglePair};
+use super::{AABB, Body};
+
+pub struct TrianglePair {
+    pub a: usize,
+    pub b: usize,
+}
 
 pub struct PairTraversal<'a> {
     body_a: &'a Body,

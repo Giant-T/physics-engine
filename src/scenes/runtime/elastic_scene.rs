@@ -50,12 +50,7 @@ pub struct ElasticSceneRuntime {
 }
 
 impl ElasticSceneRuntime {
-    pub fn new(
-        mesh_type: &ElasticMeshType,
-        anchoring: &Anchoring,
-        time_step: f64,
-        renderer: &Renderer,
-    ) -> Self {
+    pub fn new(mesh_type: &ElasticMeshType, anchoring: &Anchoring, renderer: &Renderer) -> Self {
         let mut tet_mesh = match mesh_type {
             ElasticMeshType::File(mesh_path) => TetMesh::load_mesh_file(mesh_path),
             ElasticMeshType::Box(cells_x, cells_y, cells_z, cell_size) => {

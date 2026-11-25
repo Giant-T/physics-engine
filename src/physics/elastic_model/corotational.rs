@@ -2,7 +2,7 @@ use nalgebra::{Matrix3, Vector3};
 
 use super::LameParameters;
 
-// Generer par IA TODO: Refaire la fonction
+// Generé par IA TODO: Refaire la fonction
 pub fn polar_decomposition(F: &Matrix3<f64>) -> (Matrix3<f64>, Matrix3<f64>) {
     let svd = F.svd(true, true);
 

@@ -7,8 +7,11 @@ pub struct PointRenderPipeline {
 }
 
 impl PointRenderPipeline {
-    pub fn new(renderer: &Renderer) -> Self {
-        let bind_group_layouts = &[Some(renderer.camera.bind_group_layout())];
+    pub fn new(renderer: &Renderer, bind_group_layout: &wgpu::BindGroupLayout) -> Self {
+        let bind_group_layouts = &[
+            Some(bind_group_layout),
+            Some(renderer.camera.bind_group_layout()),
+        ];
 
         let shader = renderer
             .device

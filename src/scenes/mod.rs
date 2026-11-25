@@ -60,13 +60,13 @@ impl Scene {
 
         self.accumulator += delta_time;
 
-        while self.accumulator >= self.descriptor.time_step {
+        if self.accumulator >= self.descriptor.time_step {
             self.runtime.update(self.descriptor.time_step);
-            self.accumulator -= self.descriptor.time_step;
             self.time += self.descriptor.time_step;
-        }
 
-        self.runtime.update_mesh(renderer);
+            self.runtime.update_mesh(renderer);
+            self.accumulator = 0.0;
+        }
     }
 
     pub fn select_from_ray(&mut self, ray: &Ray, renderer: &Renderer) {

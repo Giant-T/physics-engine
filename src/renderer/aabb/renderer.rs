@@ -81,7 +81,7 @@ impl AABBRenderer {
         self.count = aabbs.len();
 
         if self.count > self.capacity {
-            self.capacity = self.capacity * 2 + 1;
+            self.capacity = self.count;
             self.aabb_buffer = renderer.device.create_buffer(&wgpu::BufferDescriptor {
                 label: None,
                 size: (self.capacity * size_of::<AABBInstance>()) as u64,

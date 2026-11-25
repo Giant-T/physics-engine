@@ -1,6 +1,6 @@
 use std::ops::Mul;
 
-use nalgebra::{Matrix3, Matrix4, Point3, RealField, Unit, UnitQuaternion, Vector3};
+use nalgebra::{Matrix3, Matrix4, Point3, RealField, Unit, UnitQuaternion, Vector3, Vector4};
 use num_traits::ToPrimitive;
 
 use crate::renderer::{Renderer, UIElement};
@@ -26,6 +26,7 @@ impl<T: RealField + ToPrimitive + Copy + Mul<Matrix3<T>, Output = Matrix3<T>>> T
             ..Default::default()
         }
     }
+
     pub fn from_rotation(rotation: UnitQuaternion<T>) -> Self {
         Self {
             rotation,
@@ -69,6 +70,10 @@ impl<T: RealField + ToPrimitive + Copy + Mul<Matrix3<T>, Output = Matrix3<T>>> T
 
     pub fn point_to_world(&self, point: &Point3<T>) -> Point3<T> {
         self.matrix().transform_point(point)
+    }
+
+    pub fn vector_position_to_world(&self, point: &Vector3<T>) -> Vector3<T> {
+        (self.matrix() * Vector4::new(point.x, point.y, point.z, T::one())).xyz()
     }
 
     pub fn vector_to_world(&self, vector: &Vector3<T>) -> Vector3<T> {

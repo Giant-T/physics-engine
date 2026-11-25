@@ -34,10 +34,10 @@ const SCENES_DESCRIPTORS: [SceneDescriptor; 4] = [
         },
     },
     SceneDescriptor {
-        name: "Test collisions",
+        name: "Test detection de collisions",
         description: "De jolies collisions entre une multitude d'objets differents",
         time_step: 0.05,
-        scene_type: SceneType::Collisions {
+        scene_type: SceneType::CollisionDetections {
             n_bodies: 6,
             half_size: 2.5,
         },
